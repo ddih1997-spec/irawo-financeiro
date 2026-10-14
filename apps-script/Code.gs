@@ -6,8 +6,10 @@
 const ABA = 'Lancamentos';
 const CAB = ['id', 'grupo_id', 'tipo', 'descricao', 'pessoa', 'categoria', 'valor', 'vencimento',
   'status', 'data_pagamento', 'parcela', 'total_parcelas', 'forma', 'obs', 'criado_em'];
-// texto puro: datas (não virar Date) e campos livres (não virar fórmula, ex.: "=IMPORTRANGE(...)")
-const COLUNAS_TEXTO = ['vencimento', 'data_pagamento', 'criado_em', 'descricao', 'pessoa', 'categoria', 'forma', 'obs'];
+// datas ficam como texto puro (não viram Date); campos livres são gravados como texto literal
+// (rich text não interpreta "=" como fórmula, ex.: "=IMPORTRANGE(...)" vindo de uma foto)
+const COLUNAS_TEXTO = ['vencimento', 'data_pagamento', 'criado_em'];
+const TEXTOS = ['descricao', 'pessoa', 'categoria', 'forma', 'obs'];
 // a chave pode ter qualquer um destes nomes nas Propriedades do script
 function chaveIA_(props) { return props.getProperty('OPENROUTER_KEY') || props.getProperty('OPENROUTER_API_KEY'); }
 const MODELO_PADRAO = 'google/gemini-2.5-flash';
@@ -149,6 +151,10 @@ function agora_() {
   return Utilities.formatDate(new Date(), Session.getScriptTimeZone(), "yyyy-MM-dd'T'HH:mm:ss");
 }
 
+function texto_(v) {
+  return SpreadsheetApp.newRichTextValue().setText(String(v === null || v === undefined ? '' : v)).build();
+}
+
 function adicionar_(itens) {
   if (!itens.length) return;
   const sh = aba_();
@@ -159,7 +165,13 @@ function adicionar_(itens) {
     return CAB.map(c => (o[c] === undefined || o[c] === null) ? '' : o[c]);
   });
   COLUNAS_TEXTO.forEach(c => sh.getRange(ini, CAB.indexOf(c) + 1, linhas.length, 1).setNumberFormat('@'));
-  sh.getRange(ini, 1, linhas.length, CAB.length).setValues(linhas);
+  const livres = TEXTOS.map(c => CAB.indexOf(c));
+  const bruto = linhas.map(l => l.map((v, i) => livres.indexOf(i) >= 0 ? '' : v));
+  sh.getRange(ini, 1, linhas.length, CAB.length).setValues(bruto);
+  TEXTOS.forEach(c => {
+    const i = CAB.indexOf(c);
+    sh.getRange(ini, i + 1, linhas.length, 1).setRichTextValues(linhas.map(l => [texto_(l[i])]));
+  });
 }
 
 function mapaIds_(sh) {
@@ -180,6 +192,7 @@ function atualizar_(itens) {
       const col = CAB.indexOf(k);
       if (col < 1 || k === 'criado_em') return; // nunca altera o id
       const cel = sh.getRange(linha, col + 1);
+      if (TEXTOS.indexOf(k) >= 0) { cel.setRichTextValue(texto_(it[k])); return; }
       if (COLUNAS_TEXTO.indexOf(k) >= 0) cel.setNumberFormat('@');
       cel.setValue(it[k] === null ? '' : it[k]);
     });

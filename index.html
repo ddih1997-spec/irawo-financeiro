@@ -37,23 +37,23 @@ h2:first-child{margin-top:4px}
 .kpi .l{color:var(--mut);font-size:11px;letter-spacing:.1em;text-transform:uppercase}
 .kpi .v{font-size:22px;font-weight:600;margin-top:8px;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 .kpi .s{color:var(--mut);font-size:12px;margin-top:3px}
-.pos{color:var(--green)}.neg{color:var(--red)}.gold{color:var(--silver)}.mut{color:var(--mut)}
+.pos{color:#f1f3f6}.neg{color:#a3a9b4}.gold{color:var(--silver)}.mut{color:var(--mut)}
 .mes{display:flex;align-items:center;justify-content:center;gap:14px;margin-bottom:16px}
 .mes b{min-width:170px;text-align:center;font-weight:600;letter-spacing:.02em}
 .mes b::first-letter{text-transform:uppercase}
 .icbtn{background:var(--card2);border:1px solid var(--line2);border-radius:10px;width:38px;height:38px;font-size:18px;cursor:pointer;color:var(--silver)}
 .btn{background:linear-gradient(180deg,#e6e9ee,#b4bac5);color:#101215;border:0;border-radius:10px;padding:12px 18px;font-weight:600;letter-spacing:.01em;cursor:pointer}
 .btn.sec{background:var(--card2);color:var(--txt);border:1px solid var(--line2)}
-.btn.danger{background:transparent;color:var(--red);border:1px solid rgba(224,138,138,.5)}
+.btn.danger{background:transparent;color:#c3c8d0;border:1px solid #565c68}
 .btn.sm{padding:8px 13px;font-size:13px;border-radius:9px}
-.btn.green{background:var(--green);color:#0b1510}
+.btn.green{background:linear-gradient(180deg,#d9dde3,#9ea5b1);color:#101215}
 .btn[disabled]{opacity:.45}
 .row{display:flex;gap:10px;align-items:center}
 .row.wrap{flex-wrap:wrap}
 .sp{flex:1}
 .chip{display:inline-block;padding:2px 9px;border-radius:99px;font-size:11px;background:var(--card2);color:var(--mut);border:1px solid var(--line2);letter-spacing:.02em}
-.chip.red{color:var(--red);border-color:rgba(224,138,138,.5)}
-.chip.green{color:var(--green);border-color:rgba(134,197,164,.5)}
+.chip.red{color:#e1e4e9;border-color:#7b8190;background:#262a31}
+.chip.green{color:#e1e4e9;border-color:#7b8190}
 .chip.gold{color:var(--silver);border-color:var(--line2)}
 .tabs{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap}
 .tab{padding:7px 15px;border-radius:99px;background:var(--card2);border:1px solid var(--line2);cursor:pointer;font-size:13px;color:var(--mut)}
@@ -89,7 +89,7 @@ nav.bottom button.mais{background:linear-gradient(180deg,#eceef2,#a9b0bc);color:
 #modal .box{background:var(--card);border-radius:16px 16px 0 0;width:100%;max-width:560px;max-height:92vh;overflow:auto;padding:20px 18px calc(22px + env(safe-area-inset-bottom));border:1px solid var(--line2)}
 @media(min-width:760px){#modal{align-items:center}#modal .box{border-radius:16px}}
 #toast{position:fixed;left:50%;bottom:calc(100px + env(safe-area-inset-bottom));transform:translateX(-50%);background:#e8eaee;color:#101215;padding:10px 16px;border-radius:10px;font-weight:600;font-size:14px;z-index:80;display:none;max-width:90vw;box-shadow:0 8px 24px rgba(0,0,0,.5)}
-#toast.err{background:#d98080;color:#150a0a}
+#toast.err{background:#3a3e47;color:#f1f3f6;border:1px solid #6b7280}
 .lock{position:fixed;inset:0;z-index:100;background:radial-gradient(1200px 600px at 50% -10%,#1b1e25,var(--bg));display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:14px;text-align:center}
 .lock .mark{font-size:26px;font-weight:600;letter-spacing:.42em;margin-right:-.42em;background:linear-gradient(90deg,#f3f5f8,#98a0ad);-webkit-background-clip:text;background-clip:text;color:transparent;margin-bottom:6px}
 .lock input{max-width:320px;text-align:center}
@@ -243,8 +243,8 @@ function vInicio() {
   const hj = L.hojeDe(), r = L.resumo(rows, mesSel, hj);
   const ultimos = rows.slice().sort((a, b) => String(b.data_pagamento || b.vencimento).localeCompare(String(a.data_pagamento || a.vencimento))).filter(x => x.status === 'pago').slice(0, 6);
   let alertas = '';
-  if (r.vencidoReceber > 0) alertas += `<div class="card" style="border-color:var(--red);margin-bottom:10px"><b class="neg">${brl(r.vencidoReceber)}</b> a receber está <b>atrasado</b>. <a href="#" data-go="receber" style="color:var(--gold)">Ver contas</a></div>`;
-  if (r.vencidoPagar > 0) alertas += `<div class="card" style="border-color:var(--coral);margin-bottom:10px"><b>${brl(r.vencidoPagar)}</b> de contas a pagar vencidas.</div>`;
+  if (r.vencidoReceber > 0) alertas += `<div class="card" style="border-color:#7b8190;margin-bottom:10px"><b class="neg">${brl(r.vencidoReceber)}</b> a receber está <b>atrasado</b>. <a href="#" data-go="receber" style="color:var(--gold)">Ver contas</a></div>`;
+  if (r.vencidoPagar > 0) alertas += `<div class="card" style="border-color:#565c68;margin-bottom:10px"><b>${brl(r.vencidoPagar)}</b> de contas a pagar vencidas.</div>`;
   if (r.proximos7Receber > 0) alertas += `<div class="card" style="margin-bottom:10px"><b class="gold">${brl(r.proximos7Receber)}</b> vence nos próximos 7 dias.</div>`;
   return `
   <div class="mes"><button class="icbtn" data-mes="-1">‹</button><b>${L.rotuloMes(mesSel)}</b><button class="icbtn" data-mes="1">›</button></div>
@@ -275,14 +275,14 @@ function itemHtml(r) {
   const atrasado = r.status === 'pendente' && r.vencimento < L.hojeDe();
   return `<div class="item" data-edit="${esc(r.id)}"><div class="sp"><div class="t">${esc(r.descricao || r.categoria)}</div><div class="d">${esc(r.pessoa ? r.pessoa + ' · ' : '')}${esc(data)}${parc}${atrasado ? ' <span class="chip red">atrasada</span>' : ''}${r.status === 'pendente' && !atrasado ? ' <span class="chip">pendente</span>' : ''}</div></div><div class="val ${rec ? 'pos' : 'neg'}">${rec ? '+' : '−'} ${brl(r.valor)}</div></div>`;
 }
-const PALETA = ['#d5d9e0', '#9aa3b2', '#6f7a8b', '#b9c0cc', '#4d5666', '#e6e9ee', '#8590a1', '#3b4351', '#a5aebb'];
+const PALETA = ['#6aa6e8', '#e8b86a', '#5fc79a', '#c58be8', '#e57373', '#6ad3e8', '#e8956a', '#9aa7e8', '#b6dc6a'];
 function desenharGraficos() {
   if (typeof Chart === 'undefined') return;
   Chart.defaults.color = '#8b929e'; Chart.defaults.borderColor = '#262a31'; Chart.defaults.font.size = 11; Chart.defaults.font.family = '-apple-system, "Segoe UI", Roboto, sans-serif';
   const s = L.serieMeses(rows, mesSel, 6);
   charts.push(new Chart($('#gSerie'), { type: 'bar', data: { labels: s.meses.map(L.rotuloMesCurto), datasets: [
-    { label: 'Levantado', data: s.recebido, backgroundColor: '#86c5a4', borderRadius: 4 },
-    { label: 'Gastos', data: s.gasto, backgroundColor: '#c98080', borderRadius: 4 }] },
+    { label: 'Levantado', data: s.recebido, backgroundColor: '#5fc79a', borderRadius: 4 },
+    { label: 'Gastos', data: s.gasto, backgroundColor: '#e57373', borderRadius: 4 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { ticks: { callback: v => 'R$ ' + v } } } } }));
   const r = L.resumo(rows, mesSel), cats = Object.entries(r.porCategoria).sort((a, b) => b[1] - a[1]);
   if (cats.length) charts.push(new Chart($('#gCat'), { type: 'doughnut', data: { labels: cats.map(c => c[0]), datasets: [{ data: cats.map(c => c[1]), backgroundColor: PALETA, borderColor: '#14161a', borderWidth: 2 }] },
@@ -290,7 +290,7 @@ function desenharGraficos() {
   else $('#gCat').parentElement.innerHTML = '<div class="empty">Sem gastos pagos neste mês.</div>';
   const p = L.previsao(rows, L.mesDe(L.hojeDe()), 6);
   const labels = ['Atrasado', ...p.meses.map(L.rotuloMesCurto)], vals = [p.atrasado, ...p.valores];
-  charts.push(new Chart($('#gPrev'), { type: 'bar', data: { labels, datasets: [{ data: vals, backgroundColor: vals.map((_, i) => i === 0 ? '#c98080' : '#aeb5c1'), borderRadius: 4 }] },
+  charts.push(new Chart($('#gPrev'), { type: 'bar', data: { labels, datasets: [{ data: vals, backgroundColor: vals.map((_, i) => i === 0 ? '#e57373' : '#e8b86a'), borderRadius: 4 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => 'R$ ' + v } } } } }));
 }
 
