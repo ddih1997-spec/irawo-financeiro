@@ -209,21 +209,33 @@ function excluir_(ids) {
   ids.map(id => m[id]).filter(Boolean).sort((a, b) => b - a).forEach(l => sh.deleteRow(l));
 }
 
-// ---- Receitas padrão (produtos e serviços com preço) ----
+// ---- Receitas e despesas padrão (atalhos; o valor é opcional) ----
 const ABA_CAT = 'Catalogo';
-const PADRAO_CAT = [['BORI', 3000, 'Serviços e trabalhos'], ['EBÓ', 800, 'Serviços e trabalhos'], ['Yahuaska', 300, 'Serviços e trabalhos']];
+const PADRAO_CAT = [
+  ['BORI', 3000, 'Serviços e trabalhos', 'receita'], ['EBÓ', 800, 'Serviços e trabalhos', 'receita'], ['Yahuaska', 300, 'Serviços e trabalhos', 'receita'],
+  ['Mercado', '', 'Alimentação e insumos', 'despesa'], ['Gás', '', 'Aluguel e contas', 'despesa'], ['Luz', '', 'Aluguel e contas', 'despesa'],
+  ['Água', '', 'Aluguel e contas', 'despesa'], ['Bichinho', '', 'Materiais e oferendas', 'despesa'],
+];
 
 function abaCatalogo_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   let sh = ss.getSheetByName(ABA_CAT);
+  const cab = c => c.setFontWeight('bold').setBackground('#2a1f4a').setFontColor('#f2b84b');
   if (!sh) {
     sh = ss.insertSheet(ABA_CAT);
-    sh.getRange(1, 1, 1, 3).setValues([['nome', 'valor', 'categoria']])
-      .setFontWeight('bold').setBackground('#2a1f4a').setFontColor('#f2b84b');
+    cab(sh.getRange(1, 1, 1, 4).setValues([['nome', 'valor', 'categoria', 'tipo']]));
     sh.setFrozenRows(1);
-    sh.getRange(2, 1, PADRAO_CAT.length, 3).setValues(PADRAO_CAT);
+    sh.getRange(2, 1, PADRAO_CAT.length, 4).setValues(PADRAO_CAT);
     sh.getRange(2, 2, 200, 1).setNumberFormat('R$ #,##0.00');
-    sh.autoResizeColumns(1, 3);
+    sh.autoResizeColumns(1, 4);
+  } else if (String(sh.getRange(1, 4).getValue()).trim() !== 'tipo') {
+    // migração: planilha antiga só tinha receitas
+    cab(sh.getRange(1, 4).setValue('tipo'));
+    const n = sh.getLastRow();
+    if (n > 1) sh.getRange(2, 4, n - 1, 1).setValue('receita');
+    const despesas = PADRAO_CAT.filter(l => l[3] === 'despesa');
+    sh.getRange(sh.getLastRow() + 1, 1, despesas.length, 4).setValues(despesas);
+    sh.autoResizeColumns(1, 4);
   }
   return sh;
 }
@@ -232,20 +244,21 @@ function lerCatalogo_() {
   const sh = abaCatalogo_();
   const n = sh.getLastRow();
   if (n < 2) return [];
-  return sh.getRange(2, 1, n - 1, 3).getValues()
+  return sh.getRange(2, 1, n - 1, 4).getValues()
     .filter(l => String(l[0]).trim() !== '')
-    .map(l => ({ nome: String(l[0]), valor: Number(l[1]) || 0, categoria: String(l[2] || '') }));
+    .map(l => ({ nome: String(l[0]), valor: Number(l[1]) || 0, categoria: String(l[2] || ''), tipo: String(l[3]).trim() === 'despesa' ? 'despesa' : 'receita' }));
 }
 
 function salvarCatalogo_(itens) {
   const sh = abaCatalogo_();
   const n = sh.getLastRow();
-  if (n > 1) sh.getRange(2, 1, n - 1, 3).clearContent();
+  if (n > 1) sh.getRange(2, 1, n - 1, 4).clearContent();
   const lista = itens.filter(i => String(i.nome || '').trim() !== '').slice(0, 200);
   if (!lista.length) return;
   sh.getRange(2, 1, lista.length, 1).setNumberFormat('@').setRichTextValues(lista.map(i => [texto_(i.nome)]));
-  sh.getRange(2, 2, lista.length, 1).setValues(lista.map(i => [Number(i.valor) || 0]));
+  sh.getRange(2, 2, lista.length, 1).setValues(lista.map(i => [Number(i.valor) || '']));
   sh.getRange(2, 3, lista.length, 1).setNumberFormat('@').setRichTextValues(lista.map(i => [texto_(i.categoria || '')]));
+  sh.getRange(2, 4, lista.length, 1).setValues(lista.map(i => [i.tipo === 'despesa' ? 'despesa' : 'receita']));
 }
 
 // ---- Categorias editáveis (receita e despesa) ----

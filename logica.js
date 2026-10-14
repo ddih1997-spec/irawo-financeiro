@@ -264,7 +264,7 @@ Regras:
 - Sem ano, use o ano de hoje. Sem data de pagamento dita, use hoje.
 - Se não der para saber o valor, devolva itens=[] e peça a informação em "mensagem".
 - Vários lançamentos na mesma fala/imagem: vários itens.
-${catalogo && catalogo.length ? '- Produtos e serviços padrão da casa (nome = valor): ' + catalogo.map(c => c.nome + ' = ' + c.valor).join('; ') + '. Se a pessoa citar um deles sem dizer o valor, use o valor padrão, coloque o nome do produto em "descricao" e a categoria dele.\n' : ''}${textoExtra ? 'Texto do usuário: ' + textoExtra : ''}`;
+${catalogo && catalogo.filter(c => c.tipo !== 'despesa').length ? '- Receitas padrão da casa (nome = valor): ' + catalogo.filter(c => c.tipo !== 'despesa').map(c => c.nome + ' = ' + c.valor).join('; ') + '. Se a pessoa citar uma delas sem dizer o valor, use o valor padrão, coloque o nome em "descricao" e a categoria dela.\n' : ''}${catalogo && catalogo.filter(c => c.tipo === 'despesa').length ? '- Despesas padrão da casa (nome [categoria]): ' + catalogo.filter(c => c.tipo === 'despesa').map(c => c.nome + ' [' + c.categoria + ']' + (c.valor > 0 ? ' = ' + c.valor : '')).join('; ') + '. Se a pessoa citar uma delas, coloque o nome em "descricao" e use a categoria dela.\n' : ''}${textoExtra ? 'Texto do usuário: ' + textoExtra : ''}`;
   }
 
   const api = {

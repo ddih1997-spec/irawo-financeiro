@@ -99,3 +99,16 @@ describe('desfazer baixa', () => {
     assert.strictEqual(rows.find(r => r.id === 'p2').valor, 430);
   });
 });
+
+describe('prompt com despesas padrão', () => {
+  const cat = [{ nome: 'BORI', valor: 3000, categoria: 'Serviços e trabalhos', tipo: 'receita' },
+    { nome: 'Mercado', valor: 0, categoria: 'Alimentação e insumos', tipo: 'despesa' },
+    { nome: 'Luz', valor: 150, categoria: 'Aluguel e contas', tipo: 'despesa' }];
+  it('lista receitas e despesas separadas', () => {
+    const p = L.montarPrompt('2026-10-14', 'comprei no mercado', cat);
+    assert.ok(p.includes('BORI = 3000'));
+    assert.ok(p.includes('Mercado [Alimentação e insumos]'));
+    assert.ok(p.includes('Luz [Aluguel e contas] = 150'));
+    assert.ok(!p.includes('Mercado = '));
+  });
+});

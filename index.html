@@ -74,6 +74,8 @@ label.opt input{width:auto;margin-top:3px}
 input,select,textarea{width:100%;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:11px 12px;font-size:16px}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(59,76,202,.15)}
 textarea{min-height:90px;resize:vertical}
+input.need{background:#fde8ee;border-color:#f2b3c3}
+input.need:focus{border-color:#d6456f;box-shadow:0 0 0 3px rgba(214,69,111,.15)}
 .field2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .tiles{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
 .tile{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:22px 10px 18px;text-align:center;cursor:pointer;font-weight:600;box-shadow:0 1px 2px rgba(28,34,48,.04),0 4px 14px rgba(28,34,48,.04)}
@@ -182,9 +184,12 @@ function demoApi(acao, ex) {
     case 'atualizar': ex.itens.forEach(i => { const x = d.find(r => r.id === i.id); if (x) Object.assign(x, i); }); salva(); return { ok: true, dados: d };
     case 'excluir': d = d.filter(r => !ex.ids.includes(r.id)); salva(); return { ok: true, dados: d };
     case 'salvarChave': return { ok: true, temChave: true };
-    case 'catalogo': { let c = ls.get('irawo_demo_cat', null); if (!c) { c = [{ nome: 'BORI', valor: 3000, categoria: 'Serviços e trabalhos' }, { nome: 'EBÓ', valor: 800, categoria: 'Serviços e trabalhos' }, { nome: 'Yahuaska', valor: 300, categoria: 'Serviços e trabalhos' }]; ls.set('irawo_demo_cat', c); } return { ok: true, dados: c }; }
-    case 'categorias': return { ok: true, dados: ls.get('irawo_demo_catg', { receita: L.CATEGORIAS.receita, despesa: L.CATEGORIAS.despesa }) };
-    case 'salvarCategorias': ls.set('irawo_demo_catg', { receita: ex.receita, despesa: ex.despesa }); return { ok: true, dados: { receita: ex.receita, despesa: ex.despesa } };
+    case 'catalogo': {
+      let c = ls.get('irawo_demo_cat', null) || [{ nome: 'BORI', valor: 3000, categoria: 'Serviços e trabalhos' }, { nome: 'EBÓ', valor: 800, categoria: 'Serviços e trabalhos' }, { nome: 'Yahuaska', valor: 300, categoria: 'Serviços e trabalhos' }];
+      c = c.map(x => ({ tipo: 'receita', ...x }));
+      if (!c.some(x => x.tipo === 'despesa')) c = c.concat([['Mercado', 'Alimentação e insumos'], ['Gás', 'Aluguel e contas'], ['Luz', 'Aluguel e contas'], ['Água', 'Aluguel e contas'], ['Bichinho', 'Materiais e oferendas']].map(([nome, categoria]) => ({ nome, valor: 0, categoria, tipo: 'despesa' })));
+      ls.set('irawo_demo_cat', c); return { ok: true, dados: c };
+    }
     case 'salvarCatalogo': ls.set('irawo_demo_cat', ex.itens); return { ok: true, dados: ex.itens };
     case 'ia': throw new Error('A IA não funciona no modo demonstração.');
   }
@@ -369,11 +374,17 @@ function vLancar() {
     <div class="tile" data-lanc="texto"><span class="e"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></span>Escrever<small>digite e a IA organiza</small></div>
   </div>
   <div class="row" style="margin-top:14px"><button class="btn sec sp" data-lanc="manual">Lançamento manual</button></div>
-  ${catalogo.length ? `<h2>Receita rápida</h2><div class="tabs">${catalogo.map((c, i) => `<div class="tab" data-quick="${i}">${esc(c.nome)} · ${brl(c.valor)}</div>`).join('')}</div><div class="hint">Toque no produto, digite o nome da pessoa e salve.</div>` : ''}
+  ${chipsRapidos('receita')}${chipsRapidos('despesa')}
   <input type="file" id="fileFoto" accept="image/*" multiple hidden>
   <input type="file" id="fileVideo" accept="video/*" hidden>
   <input type="file" id="fileAudio" accept="audio/*" hidden>`;
 }
+function chipsRapidos(t) {
+  const lista = catalogo.map((c, i) => ({ c, i })).filter(x => (x.c.tipo === 'despesa') === (t === 'despesa'));
+  if (!lista.length) return '';
+  return `<h2>${t === 'receita' ? 'Receita' : 'Despesa'} rápida</h2><div class="tabs">${lista.map(({ c, i }) => `<div class="tab" data-quick="${i}">${esc(c.nome)}${c.valor > 0 ? ' · ' + brl(c.valor) : ''}</div>`).join('')}</div><div class="hint">${t === 'receita' ? 'Toque no produto, digite o nome da pessoa e salve.' : 'Toque, preencha o valor se quiser e salve.'}</div>`;
+}
+const falta = (it, campo) => campo === 'pessoa' ? (it.tipo !== 'despesa' && !String(it.pessoa || '').trim()) : campo === 'valor_total' ? !(num(it.valor_total) > 0) : false;
 function itemRevisaoHtml(it, i) {
   const ex = L.expandir({ ...it, grupo_id: 'x' });
   const multi = ex.length > 1;
@@ -384,11 +395,11 @@ function itemRevisaoHtml(it, i) {
   return `<div class="rev" data-i="${i}">
     <div class="row"><b class="${it.tipo === 'despesa' ? 'neg' : 'pos'}">${it.tipo === 'despesa' ? 'Gasto' : 'Receita'}</b><span class="sp"></span><button class="btn danger sm" data-rdel="${i}">Remover</button></div>
     <div class="tabs" style="margin-top:8px"><div class="tab ${it.tipo !== 'despesa' ? 'on' : ''}" data-rset="${i}:tipo:receita">Receita</div><div class="tab ${it.tipo === 'despesa' ? 'on' : ''}" data-rset="${i}:tipo:despesa">Gasto</div></div>
-    ${it.tipo !== 'despesa' && catalogo.length ? `<label>Receita padrão</label><select data-rprod="${i}"><option value="">Escolher produto…</option>${catalogo.map((c, k) => `<option value="${k}" ${c.nome === it.produto ? 'selected' : ''}>${esc(c.nome)} · ${brl(c.valor)}</option>`).join('')}</select>` : ''}
+    ${(() => { const op = catalogo.map((c, k) => ({ c, k })).filter(x => (x.c.tipo === 'despesa') === (it.tipo === 'despesa')); return op.length ? `<label>${it.tipo === 'despesa' ? 'Despesa' : 'Receita'} padrão</label><select data-rprod="${i}"><option value="">Escolher…</option>${op.map(({ c, k }) => `<option value="${k}" ${c.nome === it.produto ? 'selected' : ''}>${esc(c.nome)}${c.valor > 0 ? ' · ' + brl(c.valor) : ''}</option>`).join('')}</select>` : ''; })()}
     <label>Descrição</label><input data-rf="${i}:descricao" value="${esc(it.descricao)}">
-    <label>${it.tipo === 'despesa' ? 'Fornecedor' : 'Nome da pessoa'}</label><input data-rf="${i}:pessoa" value="${esc(it.pessoa)}">
+    <label>${it.tipo === 'despesa' ? 'Fornecedor' : 'Nome da pessoa'}</label><input data-rf="${i}:pessoa" class="${falta(it, 'pessoa') ? 'need' : ''}" value="${esc(it.pessoa)}">
     <label>Categoria</label><select data-rf="${i}:categoria">${catsOk.map(c => `<option ${c === it.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
-    <div class="field2"><div><label>Valor total (R$)</label><input data-rf="${i}:valor_total" inputmode="decimal" value="${it.valor_total ?? ''}"></div>
+    <div class="field2"><div><label>Valor total (R$)</label><input data-rf="${i}:valor_total" class="${falta(it, 'valor_total') ? 'need' : ''}" inputmode="decimal" value="${it.valor_total ?? ''}"></div>
     <div><label>Parcelas</label><input data-rf="${i}:parcelas" type="number" min="1" max="60" value="${it.parcelas || 1}"></div></div>
     <div class="field2"><div><label>Entrada paga (R$)</label><input data-rf="${i}:entrada" inputmode="decimal" value="${it.entrada || ''}" placeholder="opcional"></div>
     <div><label>${parc ? '1º vencimento' : (it.pago ? 'Data' : 'Vencimento')}</label><input data-rf="${i}:${campoData}" type="date" value="${esc(campoData === 'data' ? it.data : (it.primeiro_vencimento || it.data || ''))}"></div></div>
@@ -512,10 +523,7 @@ function vAjustes() {
   <div class="card"><div class="hint">Toque numa categoria para renomear ou excluir. Use "+ Nova" para criar.</div>
     ${['receita', 'despesa'].map(t => `<div style="font-weight:700;margin:16px 0 8px;color:var(--${t === 'receita' ? 'green' : 'red'})">${t === 'receita' ? 'Receitas' : 'Despesas'}</div><div class="tabs">${L.CATEGORIAS[t].map((c, i) => `<div class="tab" data-catg="${t}:${i}">${esc(c)}</div>`).join('')}<div class="tab on" data-catgnew="${t}">+ Nova</div></div>`).join('')}
   </div>
-  <h2>Receitas padrão</h2>
-  <div class="card"><div class="hint">Serviços e produtos com valor fixo. Ao lançar uma receita, é só escolher o produto e digitar o nome da pessoa.</div>
-    ${catalogo.length ? catalogo.map((c, i) => `<div class="item" data-cat="${i}"><div class="sp"><div class="t">${esc(c.nome)}</div><div class="d">${esc(c.categoria)}</div></div><div class="val">${brl(c.valor)}</div></div>`).join('') : '<div class="empty">Nenhum produto cadastrado.</div>'}
-    <div class="row" style="margin-top:12px"><button class="btn sm" data-catnew>Adicionar produto</button></div></div>
+  ${cardCatalogo('receita')}${cardCatalogo('despesa')}
   <h2>Segurança</h2>
   <div class="card">
     <div class="row wrap"><button class="btn sec sm" id="trocaSenha">${aut ? 'Trocar senha' : 'Criar senha'}</button>
@@ -523,7 +531,7 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 b</p>`;
 }
 async function hashSenha(pw, saltB64) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -621,6 +629,12 @@ function atualizaModoBaixa() {
   const padrao = ops.some(o => o[0] === atual) ? atual : (mais ? (prox ? 'ajustar' : 'quitar') : 'parcial');
   el.innerHTML = `<div class="card" style="margin-top:12px;padding:12px"><b>${mais ? 'Pagou ' + dif + ' a mais' : 'Pagou ' + dif + ' a menos'} que a parcela. O que fazer?</b>${ops.map(o => `<label class="opt"><input type="radio" name="bmodo" value="${o[0]}" ${o[0] === padrao ? 'checked' : ''}><span><b>${o[1]}</b><br><span class="mut" style="font-size:12px">${o[2]}</span></span></label>`).join('')}</div>`;
 }
+function cardCatalogo(t) {
+  const des = t === 'despesa', lista = catalogo.map((c, i) => ({ c, i })).filter(x => (x.c.tipo === 'despesa') === des);
+  return `<h2>${des ? 'Despesas padrão' : 'Receitas padrão'}</h2><div class="card"><div class="hint">${des ? 'Atalhos para os gastos do dia a dia (mercado, gás, luz…). O valor é opcional.' : 'Serviços e produtos com valor fixo. Ao lançar uma receita, é só escolher o produto e digitar o nome da pessoa.'}</div>
+    ${lista.length ? lista.map(({ c, i }) => `<div class="item" data-cat="${i}"><div class="sp"><div class="t">${esc(c.nome)}</div><div class="d">${esc(c.categoria)}</div></div><div class="val">${c.valor > 0 ? brl(c.valor) : '<span class="mut">sem valor</span>'}</div></div>`).join('') : '<div class="empty">Nada cadastrado.</div>'}
+    <div class="row" style="margin-top:12px"><button class="btn sm" data-catnew="${t}">Adicionar</button></div></div>`;
+}
 function modalCatg(t, i) {
   const nome = i >= 0 ? L.CATEGORIAS[t][i] : '';
   modal(`<h2 style="margin-top:0">${i >= 0 ? 'Editar' : 'Nova'} categoria de ${t === 'receita' ? 'receita' : 'despesa'}</h2>
@@ -637,15 +651,17 @@ async function gravaCategorias(t, lista) {
 async function renomeiaCategoria(t, antigo, novo) {
   const itens = rows.filter(r => r.tipo === t && r.categoria === antigo).map(r => ({ id: r.id, categoria: novo }));
   if (itens.length) await salvarOp('atualizar', { itens });
-  if (t === 'receita' && catalogo.some(c => c.categoria === antigo)) await gravaCatalogo(catalogo.map(c => c.categoria === antigo ? { ...c, categoria: novo } : c), 'Categoria atualizada');
+  if (catalogo.some(c => (c.tipo || 'receita') === t && c.categoria === antigo)) await gravaCatalogo(catalogo.map(c => (c.tipo || 'receita') === t && c.categoria === antigo ? { ...c, categoria: novo } : c), 'Categoria atualizada');
 }
-function modalCat(i) {
-  const c = i >= 0 ? catalogo[i] : { nome: '', valor: '', categoria: L.CATEGORIAS.receita[0] };
-  modal(`<h2 style="margin-top:0">${i >= 0 ? 'Editar' : 'Novo'} produto padrão</h2>
-  <label>Nome</label><input id="cNome" value="${esc(c.nome)}" placeholder="Ex.: BORI">
-  <label>Valor (R$)</label><input id="cVal" inputmode="decimal" value="${c.valor}">
-  <label>Categoria</label><select id="cCat">${L.CATEGORIAS.receita.map(k => `<option ${k === c.categoria ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>
-  <div class="row wrap" style="margin-top:16px">${i >= 0 ? `<button class="btn danger sm" data-catdel="${i}">Excluir</button>` : ''}<span class="sp"></span><button class="btn sec sm" data-close>Cancelar</button><button class="btn sm" data-catsave="${i}">Salvar</button></div>`);
+function modalCat(i, tipoNovo) {
+  const tipo = i >= 0 ? (catalogo[i].tipo === 'despesa' ? 'despesa' : 'receita') : (tipoNovo === 'despesa' ? 'despesa' : 'receita');
+  const c = i >= 0 ? catalogo[i] : { nome: '', valor: '', categoria: L.CATEGORIAS[tipo][0] };
+  const cats = L.CATEGORIAS[tipo], catsOk = cats.includes(c.categoria) ? cats : [c.categoria, ...cats];
+  modal(`<h2 style="margin-top:0">${i >= 0 ? 'Editar' : 'Novo'} ${tipo === 'despesa' ? 'gasto' : 'produto'} padrão</h2>
+  <label>Nome</label><input id="cNome" value="${esc(c.nome)}" placeholder="${tipo === 'despesa' ? 'Ex.: Mercado' : 'Ex.: BORI'}">
+  <label>Valor (R$)${tipo === 'despesa' ? ' — opcional' : ''}</label><input id="cVal" inputmode="decimal" value="${c.valor > 0 ? c.valor : ''}">
+  <label>Categoria</label><select id="cCat">${catsOk.map(k => `<option ${k === c.categoria ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select>
+  <div class="row wrap" style="margin-top:16px">${i >= 0 ? `<button class="btn danger sm" data-catdel="${i}">Excluir</button>` : ''}<span class="sp"></span><button class="btn sec sm" data-close>Cancelar</button><button class="btn sm" data-catsave="${i}:${tipo}">Salvar</button></div>`);
 }
 async function gravaCatalogo(lista, msg) {
   try { const j = await api('salvarCatalogo', { itens: lista }); catalogo = j.dados; ls.set('irawo_cat', catalogo); toast(msg); return true; }
@@ -665,7 +681,12 @@ document.addEventListener('click', async e => {
   if (t.id === 'chkQ') { verQuitados = t.checked; return render(); }
   if (d.f) { const [k, v] = d.f.split(':'); filtroExtrato[k] = v; return render(); }
   if (d.edit) return modalEditar(d.edit);
-  if (d.quick !== undefined) { const c = catalogo[+d.quick]; if (!c) return; const it = itemVazio('receita'); Object.assign(it, { descricao: c.nome, valor_total: c.valor, produto: c.nome, categoria: c.categoria || it.categoria }); revisao = { mensagem: '', itens: [it] }; return render(); }
+  if (d.quick !== undefined) {
+    const c = catalogo[+d.quick]; if (!c) return;
+    const it = itemVazio(c.tipo === 'despesa' ? 'despesa' : 'receita');
+    Object.assign(it, { descricao: c.nome, valor_total: c.valor > 0 ? c.valor : '', produto: c.nome, categoria: c.categoria || it.categoria });
+    revisao = { mensagem: '', itens: [it] }; return render();
+  }
   if (d.catg !== undefined) { const [t, i] = d.catg.split(':'); return modalCatg(t, +i); }
   if (d.catgnew !== undefined) return modalCatg(d.catgnew, -1);
   if (d.catgsave !== undefined) {
@@ -686,13 +707,14 @@ document.addEventListener('click', async e => {
     return render();
   }
   if (d.cat !== undefined) return modalCat(+d.cat);
-  if ('catnew' in d) return modalCat(-1);
+  if ('catnew' in d) return modalCat(-1, d.catnew);
   if (d.catsave !== undefined) {
-    const nome = $('#cNome').value.trim(), valor = num($('#cVal').value);
-    if (!nome || !(valor > 0)) return toast('Informe o nome e o valor.', true);
-    const lista = catalogo.slice(), item = { nome, valor, categoria: $('#cCat').value }, k = +d.catsave;
+    const [ks, tipo] = d.catsave.split(':'), k = +ks, nome = $('#cNome').value.trim(), valor = num($('#cVal').value);
+    if (!nome) return toast('Informe o nome.', true);
+    if (tipo === 'receita' && !(valor > 0)) return toast('Informe o valor da receita.', true);
+    const lista = catalogo.slice(), item = { nome, valor: valor > 0 ? valor : 0, categoria: $('#cCat').value, tipo };
     if (k >= 0) lista[k] = item; else lista.push(item);
-    if (await gravaCatalogo(lista, 'Produto salvo')) fecharModal(); return render();
+    if (await gravaCatalogo(lista, 'Salvo')) fecharModal(); return render();
   }
   if (d.catdel !== undefined) { if (confirm('Excluir este produto padrão?') && await gravaCatalogo(catalogo.filter((_, k) => k !== +d.catdel), 'Produto excluído')) fecharModal(); return render(); }
   if (d.baixa !== undefined) return modalBaixa(d.baixa, !!d.sug);
@@ -790,14 +812,14 @@ document.addEventListener('keydown', e => {
 document.addEventListener('input', e => {
   if (e.target.id === 'bVal') atualizaModoBaixa();
   const f = e.target.dataset && e.target.dataset.rf;
-  if (f && revisao) { const [i, ...k] = f.split(':'); revisao.itens[+i][k.join(':')] = e.target.value; }
+  if (f && revisao) { const [i, ...k] = f.split(':'); const campo = k.join(':'); revisao.itens[+i][campo] = e.target.value; if (campo === 'pessoa' || campo === 'valor_total') e.target.classList.toggle('need', falta(revisao.itens[+i], campo)); }
 });
 document.addEventListener('change', async e => {
   const el = e.target;
   if (el.dataset.rf && revisao) { const [i, k] = el.dataset.rf.split(':'); revisao.itens[+i][k] = el.value; if (['parcelas', 'entrada', 'valor_total', 'primeiro_vencimento', 'data'].includes(k)) { const sx = scrollY; render(); scrollTo(0, sx); } return; }
   if (el.dataset.rprod !== undefined && revisao) {
     const c = catalogo[+el.value], it = revisao.itens[+el.dataset.rprod];
-    if (c) { it.descricao = c.nome; it.valor_total = c.valor; it.produto = c.nome; if (c.categoria) it.categoria = c.categoria; }
+    if (c) { it.descricao = c.nome; if (c.valor > 0) it.valor_total = c.valor; it.produto = c.nome; if (c.categoria) it.categoria = c.categoria; }
     else it.produto = '';
     return render();
   }
