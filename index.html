@@ -196,7 +196,7 @@ function demoApi(acao, ex) {
       ls.set('irawo_demo_cat', c); return { ok: true, dados: c };
     }
     case 'salvarCatalogo': ls.set('irawo_demo_cat', ex.itens); return { ok: true, dados: ex.itens };
-    case 'ia': throw new Error('A IA não funciona no modo demonstração.');
+    case 'ia': throw new Error('Você está no modo demonstração (dados de exemplo só neste aparelho). Para usar a IA, abra neste aparelho o link ▶ Abrir IRAWÒ da aba Resumo da planilha.');
   }
   throw new Error('Ação desconhecida');
 }
@@ -548,7 +548,7 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 c</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 d</p>`;
 }
 async function hashSenha(pw, saltB64) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
