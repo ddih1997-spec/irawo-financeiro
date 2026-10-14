@@ -153,8 +153,9 @@ let cfg = ls.get('irawo_cfg', null) || ls.get('irawo_cfg_real', null);   // {url
 let temConfigCasa = !!ls.get('irawo_tem_casa', false), modoLocal = false, detectado = temConfigCasa;
 const SERVIDOR = 'https://script.google.com/macros/s/AKfycbyIuCJxfN9QW-I-kJFKF_KpkLsYg-KTYOxwZVuaFMTy0ezbv7JF2G2-bEex4wjY0F6r/exec';   // público: sem a chave não faz nada
 async function blobCasa() {
-  try { const r = await fetch(SERVIDOR + '?conf=1'); const j = await r.json(); if (j && j.blob) return j.blob; } catch {}
-  const r = await fetch('config.enc.json', { cache: 'no-store' }); if (!r.ok) throw new Error('sem config'); return r.json();
+  const r = await fetch(SERVIDOR + '?conf=1'); const j = await r.json();
+  if (!j || !j.blob) throw new Error('sem config');
+  return j.blob;
 }
 function gravaCfg(c) { cfg = c; ls.set('irawo_cfg', c); if (c && c.url !== 'demo') ls.set('irawo_cfg_real', c); }
 let rows = ls.get('irawo_cache', []);
@@ -177,9 +178,11 @@ async function api(acao, extra = {}) {
   if (!cfg) throw new Error('App ainda não configurado (Ajustes).');
   if (cfg.url === 'demo') return demoApi(acao, extra);
   let r;
+  const ctrl = new AbortController(), limite = setTimeout(() => ctrl.abort(), acao === 'ia' ? 120000 : 45000);
   try {
-    r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: cfg.token, acao, ...extra }) });
-  } catch { throw new Error('Sem conexão com a planilha. Confira a internet.'); }
+    r = await fetch(cfg.url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ token: cfg.token, acao, ...extra }), signal: ctrl.signal });
+  } catch (e) { throw new Error(e && e.name === 'AbortError' ? 'A planilha demorou demais para responder. Tente de novo.' : 'Sem conexão com a planilha. Confira a internet.'); }
+  finally { clearTimeout(limite); }
   let j;
   try { j = await r.json(); } catch { throw new Error('Resposta inesperada do servidor.'); }
   if (!j.ok) {
@@ -226,16 +229,17 @@ function semearDemo() {
   ls.set('irawo_demo', lista);
 }
 
+let erroCarga = '';
 async function carregar(silencioso) {
   if (!cfg) return render();
-  if (!silencioso) { carregando = true; render(); }
+  if (!silencioso) { carregando = true; erroCarga = ''; render(); }
   try {
-    const j = await api('listar');
-    rows = j.dados; ls.set('irawo_cache', rows);
-    try { const c = await api('catalogo'); catalogo = c.dados; ls.set('irawo_cat', catalogo); } catch {}
-    try { const g = await api('categorias'); aplicaCategorias(g.dados); ls.set('irawo_catg', g.dados); } catch {}
-  } catch (e) { toast(e.message + ' (mostrando dados salvos)', true); }
-  carregando = false; render();
+    const [l, c, g] = await Promise.allSettled([api('listar'), api('catalogo'), api('categorias')]);
+    if (l.status === 'fulfilled') { rows = l.value.dados; ls.set('irawo_cache', rows); erroCarga = ''; }
+    else { erroCarga = l.reason && l.reason.message || 'Erro ao carregar.'; toast(erroCarga + (rows.length ? ' (mostrando dados salvos)' : ''), true); }
+    if (c.status === 'fulfilled') { catalogo = c.value.dados; ls.set('irawo_cat', catalogo); }
+    if (g.status === 'fulfilled') { aplicaCategorias(g.value.dados); ls.set('irawo_catg', g.value.dados); }
+  } finally { carregando = false; render(); }
 }
 async function salvarOp(acao, extra, msg) {
   try {
@@ -267,7 +271,7 @@ function render() {
   if (!cfg && view !== 'ajustes') { view = 'ajustes'; renderNav(); }
   v.innerHTML = ({ inicio: vInicio, receber: vReceber, lancar: vLancar, extrato: vExtrato, ajustes: vAjustes }[view])();
   $('#subtitulo').textContent = cfg && cfg.url === 'demo' ? 'Modo demonstração' : 'Financeiro';
-  if (view === 'inicio') desenharGraficos();
+  if (view === 'inicio' && $('#gSerie')) { try { desenharGraficos(); } catch (e) { console.error('gráficos', e); } }
 }
 
 /* ============ INÍCIO (dashboard) ============ */
@@ -281,6 +285,7 @@ function abrirExtrato(f) {
 const hov = (e, els) => { if (e.native && e.native.target) e.native.target.style.cursor = els.length ? 'pointer' : 'default'; };
 function vInicio() {
   if (carregando && !rows.length) return `<div class="empty"><span class="spin"></span><p>Carregando…</p></div>`;
+  if (!carregando && erroCarga && !rows.length) return `<div class="empty"><p><b>Não consegui carregar.</b></p><p>${esc(erroCarga)}</p><button class="btn" data-recarregar>Tentar de novo</button></div>`;
   const hj = L.hojeDe(), r = L.resumo(rows, mesSel, hj);
   const ultimos = rows.slice().sort((a, b) => String(b.data_pagamento || b.vencimento).localeCompare(String(a.data_pagamento || a.vencimento))).filter(x => x.status === 'pago').slice(0, 6);
   let alertas = '';
@@ -569,7 +574,7 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 g</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 k</p>`;
 }
 async function decifraConfig(pw) {
   const c = await blobCasa();
@@ -739,10 +744,11 @@ const num = s => { const v = parseFloat(String(s).replace(/\./g, m => (String(s)
 
 /* ============ eventos (delegação) ============ */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnReal,#btnCasa,#lkCasa,#lkOutra,#btnSair,#trocaSenha,#trocaCasa,#okCasaNova,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
+  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-recarregar],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnReal,#btnCasa,#lkCasa,#lkOutra,#btnSair,#trocaSenha,#trocaCasa,#okCasaNova,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); if (d.go !== 'lancar') { revisao = null; sugestaoBaixa = null; } return ir(d.go); }
+  if ('recarregar' in d) return carregar();
   if (d.nav !== undefined) { const [tipo, status, mes, categoria] = d.nav.split('|'); return abrirExtrato({ tipo: tipo || 'todos', status: status || 'todos', mes: mes || '', categoria: categoria || '' }); }
   if (d.mes) { mesSel = L.addMesYM(mesSel, +d.mes); return render(); }
   if (d.aba) { abaReceber = d.aba; return render(); }
@@ -950,7 +956,8 @@ document.addEventListener('change', async e => {
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (tinha && !window.__recarregou) { window.__recarregou = true; location.reload(); } });
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  blobCasa().then(() => { temConfigCasa = true; detectado = true; ls.set('irawo_tem_casa', true); telaBloqueio(); }).catch(() => { temConfigCasa = false; detectado = true; ls.set('irawo_tem_casa', false); telaBloqueio(); });
+  const aplicaDeteccao = tem => { const antes = temConfigCasa + '|' + detectado; temConfigCasa = tem; detectado = true; ls.set('irawo_tem_casa', tem); if (antes !== tem + '|true') telaBloqueio(); };   // só redesenha se mudou (senão apagava o que a pessoa já digitou)
+  blobCasa().then(() => aplicaDeteccao(true)).catch(() => aplicaDeteccao(false));
   bloqueado = !!ls.get('irawo_auth') || true;
   telaBloqueio();
   render();
