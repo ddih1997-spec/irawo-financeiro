@@ -82,7 +82,12 @@ function montarResumo_(ss) {
   r.setColumnWidth(1, 190); r.setColumnWidth(2, 150);
 }
 
-function doGet() {
+function doGet(e) {
+  // configuração cifrada pela "senha da casa" (só abre com a senha); por si só não dá acesso a nada
+  if (e && e.parameter && e.parameter.conf === '1') {
+    const b = PropertiesService.getScriptProperties().getProperty('CONFIG_ENC');
+    return saida_({ ok: true, blob: b ? JSON.parse(b) : null });
+  }
   return saida_({ ok: true, app: 'IRAWÒ' });
 }
 
@@ -107,6 +112,13 @@ function doPost(e) {
         case 'salvarCatalogo': salvarCatalogo_(req.itens || []); return saida_({ ok: true, dados: lerCatalogo_() });
         case 'categorias': return saida_({ ok: true, dados: lerCategorias_() });
         case 'salvarCategorias': salvarCategorias_(req); return saida_({ ok: true, dados: lerCategorias_() });
+        case 'trocarAcesso': {
+          // nova chave de acesso + configuração cifrada com a nova senha da casa (os outros aparelhos perdem o acesso)
+          if (!/^[0-9a-f]{64}$/.test(String(req.novoToken || '')) || !req.blob || !req.blob.ct || !req.blob.salt || !req.blob.iv) return saida_({ ok: false, erro: 'Dados inválidos' });
+          props.setProperty('CONFIG_ENC', JSON.stringify({ v: req.blob.v || 1, iter: req.blob.iter, salt: req.blob.salt, iv: req.blob.iv, ct: req.blob.ct }));
+          props.setProperty('TOKEN', req.novoToken);
+          return saida_({ ok: true });
+        }
         case 'salvarChave':
           if (!req.chave || String(req.chave).length < 20) return saida_({ ok: false, erro: 'Chave inválida' });
           props.setProperty('OPENROUTER_KEY', String(req.chave).trim());

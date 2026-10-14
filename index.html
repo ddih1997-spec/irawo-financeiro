@@ -150,7 +150,12 @@ const blobB64 = blob => new Promise((res, rej) => { const f = new FileReader(); 
 
 /* ============ estado e acesso aos dados ============ */
 let cfg = ls.get('irawo_cfg', null) || ls.get('irawo_cfg_real', null);   // {url, token}
-let temConfigCasa = false, modoLocal = false;
+let temConfigCasa = !!ls.get('irawo_tem_casa', false), modoLocal = false, detectado = temConfigCasa;
+const SERVIDOR = 'https://script.google.com/macros/s/AKfycbyIuCJxfN9QW-I-kJFKF_KpkLsYg-KTYOxwZVuaFMTy0ezbv7JF2G2-bEex4wjY0F6r/exec';   // público: sem a chave não faz nada
+async function blobCasa() {
+  try { const r = await fetch(SERVIDOR + '?conf=1'); const j = await r.json(); if (j && j.blob) return j.blob; } catch {}
+  const r = await fetch('config.enc.json', { cache: 'no-store' }); if (!r.ok) throw new Error('sem config'); return r.json();
+}
 function gravaCfg(c) { cfg = c; ls.set('irawo_cfg', c); if (c && c.url !== 'demo') ls.set('irawo_cfg_real', c); }
 let rows = ls.get('irawo_cache', []);
 let catalogo = ls.get('irawo_cat', []);   // receitas padrão [{nome, valor, categoria}]
@@ -177,7 +182,10 @@ async function api(acao, extra = {}) {
   } catch { throw new Error('Sem conexão com a planilha. Confira a internet.'); }
   let j;
   try { j = await r.json(); } catch { throw new Error('Resposta inesperada do servidor.'); }
-  if (!j.ok) throw new Error(j.erro || 'Erro no servidor');
+  if (!j.ok) {
+    if (j.erro === 'Acesso negado' && acao !== 'status') { cfg = null; ls.del('irawo_cfg'); ls.del('irawo_cfg_real'); view = 'ajustes'; render(); throw new Error('A senha da casa foi trocada. Digite a nova senha em Ajustes → "Já tem a senha da casa?".'); }
+    throw new Error(j.erro || 'Erro no servidor');
+  }
   return j;
 }
 
@@ -558,18 +566,33 @@ function vAjustes() {
   <div class="card">
     <div class="row wrap"><button class="btn sec sm" id="trocaSenha">${aut ? 'Trocar senha' : 'Criar senha'}</button>
     ${aut && window.PublicKeyCredential ? `<button class="btn sec sm" id="toggleBio">${aut.cred ? 'Desativar digital / rosto' : 'Ativar digital / rosto'}</button>` : ''}
-    ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
+    ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}${cfg && cfg.url !== 'demo' ? '<button class="btn sec sm" id="trocaCasa">Trocar senha da casa</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 b</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 d</p>`;
 }
 async function decifraConfig(pw) {
-  const r = await fetch('config.enc.json', { cache: 'no-store' }); if (!r.ok) throw new Error('sem config');
-  const c = await r.json();
+  const c = await blobCasa();
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(pw).normalize('NFC').trim()), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64d(c.salt), iterations: c.iter, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(c.iv) }, key, b64d(c.ct));
   return JSON.parse(new TextDecoder().decode(pt));
+}
+const senhaNorm = pw => String(pw).normalize('NFC').trim();
+async function cifraConfig(pw, obj) {
+  const iter = 300000, salt = crypto.getRandomValues(new Uint8Array(16)), iv = crypto.getRandomValues(new Uint8Array(12));
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(senhaNorm(pw)), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['encrypt']);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(JSON.stringify(obj)));
+  return { v: 1, iter, salt: b64e(salt), iv: b64e(iv), ct: b64e(ct) };
+}
+/** Troca a senha da casa: gera chave de acesso nova (os outros aparelhos perdem o acesso até digitarem a senha nova). */
+async function trocarSenhaCasa(nova, tokenFixo) {
+  const tok = tokenFixo || [...crypto.getRandomValues(new Uint8Array(32))].map(b => b.toString(16).padStart(2, '0')).join('');
+  const blob = await cifraConfig(nova, { u: cfg.url, t: tok });
+  await api('trocarAcesso', { novoToken: tok, blob });
+  gravaCfg({ url: cfg.url, token: tok });
+  await definirSenha(nova);
 }
 async function conectaComSenha(pw) {
   try { const o = await decifraConfig(pw); if (!o.u || !o.t) return false; gravaCfg({ url: o.u, token: o.t }); rows = []; ls.del('irawo_cache'); return true; } catch { return false; }
@@ -606,14 +629,14 @@ function telaBloqueio() {
   $('#view').inert = $('#nav').inert = bloqueado;
   if (!bloqueado) { host.innerHTML = ''; return; }
   const temBio = a && a.cred && window.PublicKeyCredential;
-  host.innerHTML = a ? `<div class="lock"><div class="mark">IRAWÒ</div><div class="mut">Digite sua senha</div>
+  host.innerHTML = a ? `<div class="lock"><div class="mark">IRAWÒ</div>
       <input id="lkPw" type="password" autocomplete="current-password" placeholder="senha"><div id="lkErr" class="neg" style="min-height:20px"></div>
       <button class="btn" id="lkOk" style="min-width:200px">Entrar</button>
       ${temBio ? '<button class="btn sec" id="lkBio" style="min-width:200px">Digital / rosto</button>' : ''}</div>`
-    : (temConfigCasa && !modoLocal) ? `<div class="lock"><div class="mark">IRAWÒ</div><h2 style="margin:0">Bem-vindo</h2><div class="mut" style="max-width:320px">Digite a senha da casa. Ela conecta este aparelho à planilha e também protege o app aqui.</div>
-      <input id="lkPw" type="password" autocomplete="current-password" placeholder="senha da casa"><div id="lkErr" class="neg" style="min-height:20px"></div>
-      <button class="btn" id="lkCasa" style="min-width:200px">Entrar</button>
-      <a href="#" id="lkOutra" class="hint">Usar sem planilha (senha só neste aparelho)</a></div>`
+    : (temConfigCasa && !modoLocal) ? `<div class="lock"><div class="mark">IRAWÒ</div>
+      <input id="lkPw" type="password" autocomplete="current-password" placeholder="senha"><div id="lkErr" class="neg" style="min-height:20px"></div>
+      <button class="btn" id="lkCasa" style="min-width:200px">Entrar</button></div>`
+    : !detectado ? `<div class="lock"><div class="mark">IRAWÒ</div><span class="spin"></span></div>`
     : `<div class="lock"><div class="mark">IRAWÒ</div><h2 style="margin:0">Bem-vindo</h2><div class="mut" style="max-width:320px">Crie uma senha para proteger o app neste aparelho.</div>
       <input id="lkPw" type="password" autocomplete="new-password" placeholder="nova senha (mín. 4 caracteres)">
       <input id="lkPw2" type="password" autocomplete="new-password" placeholder="repita a senha"><div id="lkErr" class="neg" style="min-height:20px"></div>
@@ -716,7 +739,7 @@ const num = s => { const v = parseFloat(String(s).replace(/\./g, m => (String(s)
 
 /* ============ eventos (delegação) ============ */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnReal,#btnCasa,#lkCasa,#lkOutra,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
+  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnReal,#btnCasa,#lkCasa,#lkOutra,#btnSair,#trocaSenha,#trocaCasa,#okCasaNova,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); if (d.go !== 'lancar') { revisao = null; sugestaoBaixa = null; } return ir(d.go); }
@@ -837,6 +860,23 @@ document.addEventListener('click', async e => {
   }
   if (t.id === 'btnDemo') { cfg = { url: 'demo', token: '' }; ls.set('irawo_cfg', cfg); if (!ls.get('irawo_demo', []).length) semearDemo(); rows = ls.get('irawo_demo', []); view = 'inicio'; return carregar(); }
   if (t.id === 'btnSair') { if (confirm('Desconectar deste aparelho? (os dados continuam na planilha)')) { cfg = null; rows = []; ls.del('irawo_cfg'); ls.del('irawo_cfg_real'); ls.del('irawo_cache'); render(); } return; }
+  if (t.id === 'trocaCasa') {
+    modal(`<h2 style="margin-top:0">Trocar a senha da casa</h2>
+    <div class="hint">A nova senha passa a valer para entrar em aparelhos novos. <b>Todos os outros aparelhos serão desconectados</b> e vão precisar digitar a senha nova. Use uma frase de pelo menos 8 caracteres.</div>
+    <label>Nova senha da casa</label><input id="nCasa1" type="password" autocomplete="new-password">
+    <label>Repita a nova senha</label><input id="nCasa2" type="password" autocomplete="new-password">
+    <div class="row" style="margin-top:16px"><button class="btn sec sp" data-close>Cancelar</button><button class="btn sp" id="okCasaNova">Trocar senha</button></div>`);
+    return;
+  }
+  if (t.id === 'okCasaNova') {
+    const a = $('#nCasa1').value, b = $('#nCasa2').value;
+    if (senhaNorm(a).length < 8) return toast('Use pelo menos 8 caracteres.', true);
+    if (a !== b) return toast('As senhas não conferem.', true);
+    t.disabled = true;
+    try { await trocarSenhaCasa(a); fecharModal(); toast('Senha da casa trocada. Os outros aparelhos precisam da senha nova.'); }
+    catch (er) { t.disabled = false; toast(er.message, true); }
+    return;
+  }
   if (t.id === 'trocaSenha') {
     modal(`<h2 style="margin-top:0">${ls.get('irawo_auth') ? 'Trocar senha' : 'Criar senha'}</h2><input id="nPw" type="password" placeholder="nova senha (mín. 4)"><div class="row" style="margin-top:12px"><button class="btn sec sp" data-close>Cancelar</button><button class="btn sp" id="okNPw">Salvar</button></div>`);
     $('#okNPw').onclick = async () => { const v = $('#nPw').value; if (v.length < 4) return toast('Mínimo 4 caracteres.', true); await definirSenha(v); fecharModal(); toast('Senha atualizada'); render(); };
@@ -910,7 +950,7 @@ document.addEventListener('change', async e => {
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (tinha && !window.__recarregou) { window.__recarregou = true; location.reload(); } });
   }
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
-  fetch('config.enc.json', { cache: 'no-store' }).then(r => { temConfigCasa = r.ok; telaBloqueio(); }).catch(() => {});
+  blobCasa().then(() => { temConfigCasa = true; detectado = true; ls.set('irawo_tem_casa', true); telaBloqueio(); }).catch(() => { temConfigCasa = false; detectado = true; ls.set('irawo_tem_casa', false); telaBloqueio(); });
   bloqueado = !!ls.get('irawo_auth') || true;
   telaBloqueio();
   render();
