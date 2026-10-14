@@ -87,7 +87,8 @@ input.need:focus{border-color:#d6456f;box-shadow:0 0 0 3px rgba(214,69,111,.15)}
 .tile:active{background:var(--card2)}
 .tile .e{display:block;width:32px;height:32px;margin:0 auto 12px}
 .tile .e svg{width:32px;height:32px;stroke:var(--acc);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
-.tile:nth-child(2) .e svg{stroke:var(--teal)}.tile:nth-child(3) .e svg{stroke:var(--violet)}.tile:nth-child(4) .e svg{stroke:var(--amber)}
+.tile:nth-child(2) .e svg{stroke:var(--teal)}.tile:nth-child(3) .e svg{stroke:var(--amber)}
+.tile:last-child{grid-column:1/-1}
 .tile small{display:block;color:var(--mut);font-weight:400;font-size:12px;margin-top:3px}
 nav.bottom{position:fixed;bottom:0;left:0;right:0;z-index:30;background:rgba(255,255,255,.95);backdrop-filter:blur(14px);border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 6px calc(8px + env(safe-area-inset-bottom))}
 nav.bottom button{background:none;border:0;color:var(--mut);display:flex;flex-direction:column;align-items:center;gap:4px;font-size:10.5px;font-weight:600;padding:6px 10px;cursor:pointer;min-width:58px}
@@ -387,13 +388,11 @@ function vLancar() {
   <div class="tiles">
     <div class="tile" data-lanc="audio"><span class="e"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span>Falar<small>"Recebi 500 da Maria…"</small></div>
     <div class="tile" data-lanc="foto"><span class="e"><svg viewBox="0 0 24 24"><path d="M4 8h3l2-2h6l2 2h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></svg></span>Foto<small>nota, recibo, comprovante</small></div>
-    <div class="tile" data-lanc="video"><span class="e"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></span>Vídeo<small>curto, até ~20 MB</small></div>
     <div class="tile" data-lanc="texto"><span class="e"><svg viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/></svg></span>Escrever<small>digite e a IA organiza</small></div>
   </div>
   <div class="row" style="margin-top:14px"><button class="btn sec sp" data-lanc="manual">Lançamento manual</button></div>
   ${chipsRapidos('receita')}${chipsRapidos('despesa')}
   <input type="file" id="fileFoto" accept="image/*" multiple hidden>
-  <input type="file" id="fileVideo" accept="video/*" hidden>
   <input type="file" id="fileAudio" accept="audio/*" hidden>`;
 }
 function chipsRapidos(t) {
@@ -548,7 +547,7 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 d</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 e</p>`;
 }
 async function hashSenha(pw, saltB64) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -747,7 +746,6 @@ document.addEventListener('click', async e => {
   if (d.lanc) {
     if (d.lanc === 'audio') return abrirGravacao();
     if (d.lanc === 'foto') return $('#fileFoto').click();
-    if (d.lanc === 'video') return $('#fileVideo').click();
     if (d.lanc === 'texto') return abrirTexto();
     if (d.lanc === 'manual') { revisao = { mensagem: '', itens: [itemVazio('receita')] }; return render(); }
   }
@@ -847,11 +845,6 @@ document.addEventListener('change', async e => {
     try { bloquear('Preparando as fotos…'); const ms = []; for (const f of [...el.files].slice(0, 4)) ms.push({ tipo: 'imagem', mime: 'image/jpeg', base64: await blobB64(await reduzImagem(f)) }); el.value = ''; await interpretar(ms); }
     catch (er) { toast(er.message, true); render(); }
     return;
-  }
-  if (el.id === 'fileVideo' && el.files.length) {
-    const f = el.files[0]; el.value = '';
-    if (f.size > 20 * 1024 * 1024) return toast('Vídeo grande demais (máx. ~20 MB). Grave um mais curto.', true);
-    bloquear('Enviando o vídeo…'); return interpretar([{ tipo: 'video', mime: f.type || 'video/mp4', base64: await blobB64(f) }]);
   }
   if (el.id === 'fileAudio' && el.files.length) {
     const f = el.files[0]; el.value = '';

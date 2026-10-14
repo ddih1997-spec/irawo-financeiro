@@ -245,7 +245,7 @@
     const { y, m, d } = parse(hoje);
     const dia = DIAS[new Date(y, m - 1, d).getDay()];
     return `Você é o assistente financeiro da casa de axé IRAWÒ. Hoje é ${dia}, ${hoje}.
-Interprete o conteúdo enviado (áudio, imagem, vídeo e/ou texto) e responda SOMENTE com um JSON, sem explicações:
+Interprete o conteúdo enviado (áudio, imagem e/ou texto) e responda SOMENTE com um JSON, sem explicações:
 {"intent":"lancar"|"baixa"|"desconhecido","mensagem":"frase curta em português","itens":[...],"baixa":{...}}
 
 intent "lancar" -> "itens" é uma lista; cada item:
@@ -253,7 +253,7 @@ intent "lancar" -> "itens" é uma lista; cada item:
 Categorias de receita: ${CATEGORIAS.receita.join(' | ')}
 Categorias de despesa: ${CATEGORIAS.despesa.join(' | ')}
 
-intent "baixa" (alguém pagou/recebemos uma parcela que já estava combinada) -> "baixa":
+intent "baixa" (alguém pagou, ou nós pagamos, uma PARCELA de um serviço que já estava combinado; ex.: "a Maria pagou a segunda parcela do bori", "recebi a parcela 3 do João", "paguei a parcela do telhado") -> "baixa":
 {"tipo":"receita"|"despesa","pessoa":"","descricao":"","parcela_numero":inteiro ou null,"valor":número ou null,"data_pagamento":"AAAA-MM-DD"}
 
 Regras:
@@ -263,8 +263,9 @@ Regras:
 - Nota fiscal, cupom ou comprovante: despesa já paga; pessoa = estabelecimento; data = data do documento; valor_total = total pago.
 - Sem ano, use o ano de hoje. Sem data de pagamento dita, use hoje.
 - Se não der para saber o valor, devolva itens=[] e peça a informação em "mensagem".
+- Se a fala citar "parcela" de algo já combinado, é SEMPRE intent "baixa" (nunca crie lançamento novo nesse caso). Em "baixa", "pessoa" é quem pagou e "descricao" o serviço/produto.
 - Vários lançamentos na mesma fala/imagem: vários itens.
-${catalogo && catalogo.filter(c => c.tipo !== 'despesa').length ? '- Receitas padrão da casa (nome = valor): ' + catalogo.filter(c => c.tipo !== 'despesa').map(c => c.nome + ' = ' + c.valor).join('; ') + '. Se a pessoa citar uma delas sem dizer o valor, use o valor padrão, coloque o nome em "descricao" e a categoria dela.\n' : ''}${catalogo && catalogo.filter(c => c.tipo === 'despesa').length ? '- Despesas padrão da casa (nome [categoria]): ' + catalogo.filter(c => c.tipo === 'despesa').map(c => c.nome + ' [' + c.categoria + ']' + (c.valor > 0 ? ' = ' + c.valor : '')).join('; ') + '. Se a pessoa citar uma delas, coloque o nome em "descricao" e use a categoria dela.\n' : ''}${textoExtra ? 'Texto do usuário: ' + textoExtra : ''}`;
+${catalogo && catalogo.filter(c => c.tipo !== 'despesa').length ? '- Receitas padrão da casa (nome = valor): ' + catalogo.filter(c => c.tipo !== 'despesa').map(c => c.nome + ' = ' + c.valor).join('; ') + '. Se a pessoa citar uma delas sem dizer o valor, use o valor padrão, coloque o nome em "descricao" e a categoria dela.\n' : ''}${catalogo && catalogo.filter(c => c.tipo === 'despesa').length ? '- Despesas padrão da casa (nome [categoria]): ' + catalogo.filter(c => c.tipo === 'despesa').map(c => c.nome + ' [' + c.categoria + ']' + (c.valor > 0 ? ' = ' + c.valor : '')).join('; ') + '. Se a pessoa citar uma delas, coloque o nome em "descricao" e use a categoria dela.\n' : ''}${catalogo && catalogo.length ? '- O áudio pode ter sotaque e ruído: palavras que soam parecido com os nomes padrão (ex.: "boi" ou "bori" = BORI, "ebó") devem ser entendidas como esses nomes.\n' : ''}${textoExtra ? 'Texto do usuário: ' + textoExtra : ''}`;
   }
 
   const api = {
