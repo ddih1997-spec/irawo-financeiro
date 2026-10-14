@@ -145,6 +145,8 @@ let cfg = ls.get('irawo_cfg', null);           // {url, token}
 let rows = ls.get('irawo_cache', []);
 let catalogo = ls.get('irawo_cat', []);   // receitas padrão [{nome, valor, categoria}]
 let ctxBaixa = null;
+function aplicaCategorias(c) { if (c && c.receita && c.receita.length && c.despesa && c.despesa.length) { L.CATEGORIAS.receita = c.receita.slice(); L.CATEGORIAS.despesa = c.despesa.slice(); } }
+aplicaCategorias(ls.get('irawo_catg', null));
 let view = 'inicio';
 let mesSel = L.mesDe(L.hojeDe());
 let abertos = new Set();
@@ -181,6 +183,8 @@ function demoApi(acao, ex) {
     case 'excluir': d = d.filter(r => !ex.ids.includes(r.id)); salva(); return { ok: true, dados: d };
     case 'salvarChave': return { ok: true, temChave: true };
     case 'catalogo': { let c = ls.get('irawo_demo_cat', null); if (!c) { c = [{ nome: 'BORI', valor: 3000, categoria: 'Serviços e trabalhos' }, { nome: 'EBÓ', valor: 800, categoria: 'Serviços e trabalhos' }, { nome: 'Yahuaska', valor: 300, categoria: 'Serviços e trabalhos' }]; ls.set('irawo_demo_cat', c); } return { ok: true, dados: c }; }
+    case 'categorias': return { ok: true, dados: ls.get('irawo_demo_catg', { receita: L.CATEGORIAS.receita, despesa: L.CATEGORIAS.despesa }) };
+    case 'salvarCategorias': ls.set('irawo_demo_catg', { receita: ex.receita, despesa: ex.despesa }); return { ok: true, dados: { receita: ex.receita, despesa: ex.despesa } };
     case 'salvarCatalogo': ls.set('irawo_demo_cat', ex.itens); return { ok: true, dados: ex.itens };
     case 'ia': throw new Error('A IA não funciona no modo demonstração.');
   }
@@ -208,6 +212,7 @@ async function carregar(silencioso) {
     const j = await api('listar');
     rows = j.dados; ls.set('irawo_cache', rows);
     try { const c = await api('catalogo'); catalogo = c.dados; ls.set('irawo_cat', catalogo); } catch {}
+    try { const g = await api('categorias'); aplicaCategorias(g.dados); ls.set('irawo_catg', g.dados); } catch {}
   } catch (e) { toast(e.message + ' (mostrando dados salvos)', true); }
   carregando = false; render();
 }
@@ -508,6 +513,10 @@ function vAjustes() {
       <div class="row" style="margin-top:12px"><button class="btn sp" id="salvaCfg">Salvar e testar</button></div></details>
     <div class="row wrap" style="margin-top:10px"><button class="btn sec sm" id="btnDemo">Usar modo demonstração</button>${cfg ? '<button class="btn danger sm" id="btnSair">Desconectar</button>' : ''}</div>
   </div>
+  <h2>Categorias</h2>
+  <div class="card"><div class="hint">Toque numa categoria para renomear ou excluir. Use "+ Nova" para criar.</div>
+    ${['receita', 'despesa'].map(t => `<div style="font-weight:700;margin:16px 0 8px;color:var(--${t === 'receita' ? 'green' : 'red'})">${t === 'receita' ? 'Receitas' : 'Despesas'}</div><div class="tabs">${L.CATEGORIAS[t].map((c, i) => `<div class="tab" data-catg="${t}:${i}">${esc(c)}</div>`).join('')}<div class="tab on" data-catgnew="${t}">+ Nova</div></div>`).join('')}
+  </div>
   <h2>Receitas padrão</h2>
   <div class="card"><div class="hint">Serviços e produtos com valor fixo. Ao lançar uma receita, é só escolher o produto e digitar o nome da pessoa.</div>
     ${catalogo.length ? catalogo.map((c, i) => `<div class="item" data-cat="${i}"><div class="sp"><div class="t">${esc(c.nome)}</div><div class="d">${esc(c.categoria)}</div></div><div class="val">${brl(c.valor)}</div></div>`).join('') : '<div class="empty">Nenhum produto cadastrado.</div>'}
@@ -617,6 +626,24 @@ function atualizaModoBaixa() {
   const padrao = ops.some(o => o[0] === atual) ? atual : (mais ? (prox ? 'ajustar' : 'quitar') : 'parcial');
   el.innerHTML = `<div class="card" style="margin-top:12px;padding:12px"><b>${mais ? 'Pagou ' + dif + ' a mais' : 'Pagou ' + dif + ' a menos'} que a parcela. O que fazer?</b>${ops.map(o => `<label class="opt"><input type="radio" name="bmodo" value="${o[0]}" ${o[0] === padrao ? 'checked' : ''}><span><b>${o[1]}</b><br><span class="mut" style="font-size:12px">${o[2]}</span></span></label>`).join('')}</div>`;
 }
+function modalCatg(t, i) {
+  const nome = i >= 0 ? L.CATEGORIAS[t][i] : '';
+  modal(`<h2 style="margin-top:0">${i >= 0 ? 'Editar' : 'Nova'} categoria de ${t === 'receita' ? 'receita' : 'despesa'}</h2>
+  <label>Nome</label><input id="gNome" value="${esc(nome)}" placeholder="Ex.: Consultas">
+  ${i >= 0 ? '<div class="hint" style="margin-top:8px">Ao renomear, os lançamentos que já usam esta categoria também são atualizados.</div>' : ''}
+  <div class="row wrap" style="margin-top:16px">${i >= 0 ? `<button class="btn danger sm" data-catgdel="${t}:${i}">Excluir</button>` : ''}<span class="sp"></span><button class="btn sec sm" data-close>Cancelar</button><button class="btn sm" data-catgsave="${t}:${i}">Salvar</button></div>`);
+  setTimeout(() => $('#gNome') && $('#gNome').focus(), 100);
+}
+async function gravaCategorias(t, lista) {
+  const body = { receita: t === 'receita' ? lista : L.CATEGORIAS.receita, despesa: t === 'despesa' ? lista : L.CATEGORIAS.despesa };
+  try { const j = await api('salvarCategorias', body); aplicaCategorias(j.dados); ls.set('irawo_catg', j.dados); toast('Categorias salvas'); return true; }
+  catch (e) { toast(e.message, true); return false; }
+}
+async function renomeiaCategoria(t, antigo, novo) {
+  const itens = rows.filter(r => r.tipo === t && r.categoria === antigo).map(r => ({ id: r.id, categoria: novo }));
+  if (itens.length) await salvarOp('atualizar', { itens });
+  if (t === 'receita' && catalogo.some(c => c.categoria === antigo)) await gravaCatalogo(catalogo.map(c => c.categoria === antigo ? { ...c, categoria: novo } : c), 'Categoria atualizada');
+}
 function modalCat(i) {
   const c = i >= 0 ? catalogo[i] : { nome: '', valor: '', categoria: L.CATEGORIAS.receita[0] };
   modal(`<h2 style="margin-top:0">${i >= 0 ? 'Editar' : 'Novo'} produto padrão</h2>
@@ -633,7 +660,7 @@ const num = s => { const v = parseFloat(String(s).replace(/\./g, m => (String(s)
 
 /* ============ eventos (delegação) ============ */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-quick],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
+  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); if (d.go !== 'lancar') { revisao = null; sugestaoBaixa = null; } return ir(d.go); }
@@ -644,6 +671,25 @@ document.addEventListener('click', async e => {
   if (d.f) { const [k, v] = d.f.split(':'); filtroExtrato[k] = v; return render(); }
   if (d.edit) return modalEditar(d.edit);
   if (d.quick !== undefined) { const c = catalogo[+d.quick]; if (!c) return; const it = itemVazio('receita'); Object.assign(it, { descricao: c.nome, valor_total: c.valor, produto: c.nome, categoria: c.categoria || it.categoria }); revisao = { mensagem: '', itens: [it] }; return render(); }
+  if (d.catg !== undefined) { const [t, i] = d.catg.split(':'); return modalCatg(t, +i); }
+  if (d.catgnew !== undefined) return modalCatg(d.catgnew, -1);
+  if (d.catgsave !== undefined) {
+    const [t, i] = d.catgsave.split(':'), k = +i, nome = $('#gNome').value.trim();
+    if (!nome) return toast('Informe o nome da categoria.', true);
+    const lista = L.CATEGORIAS[t].slice();
+    if (lista.some((c, j) => j !== k && L.norm(c) === L.norm(nome))) return toast('Essa categoria já existe.', true);
+    const antigo = k >= 0 ? lista[k] : null;
+    if (k >= 0) lista[k] = nome; else lista.push(nome);
+    if (await gravaCategorias(t, lista)) { if (antigo && antigo !== nome) await renomeiaCategoria(t, antigo, nome); fecharModal(); }
+    return render();
+  }
+  if (d.catgdel !== undefined) {
+    const [t, i] = d.catgdel.split(':'), nome = L.CATEGORIAS[t][+i];
+    if (L.CATEGORIAS[t].length <= 1) return toast('Mantenha ao menos uma categoria.', true);
+    const usa = rows.filter(r => r.tipo === t && r.categoria === nome).length;
+    if (confirm(`Excluir "${nome}"?` + (usa ? ` ${usa} lançamento(s) continuam com esse nome.` : '')) && await gravaCategorias(t, L.CATEGORIAS[t].filter((_, j) => j !== +i))) fecharModal();
+    return render();
+  }
   if (d.cat !== undefined) return modalCat(+d.cat);
   if ('catnew' in d) return modalCat(-1);
   if (d.catsave !== undefined) {

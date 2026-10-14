@@ -103,6 +103,8 @@ function doPost(e) {
         case 'excluir': excluir_(req.ids || []); return saida_({ ok: true, dados: lerTudo_() });
         case 'catalogo': return saida_({ ok: true, dados: lerCatalogo_() });
         case 'salvarCatalogo': salvarCatalogo_(req.itens || []); return saida_({ ok: true, dados: lerCatalogo_() });
+        case 'categorias': return saida_({ ok: true, dados: lerCategorias_() });
+        case 'salvarCategorias': salvarCategorias_(req); return saida_({ ok: true, dados: lerCategorias_() });
         case 'salvarChave':
           if (!req.chave || String(req.chave).length < 20) return saida_({ ok: false, erro: 'Chave inválida' });
           props.setProperty('OPENROUTER_KEY', String(req.chave).trim());
@@ -244,6 +246,57 @@ function salvarCatalogo_(itens) {
   sh.getRange(2, 1, lista.length, 1).setNumberFormat('@').setRichTextValues(lista.map(i => [texto_(i.nome)]));
   sh.getRange(2, 2, lista.length, 1).setValues(lista.map(i => [Number(i.valor) || 0]));
   sh.getRange(2, 3, lista.length, 1).setNumberFormat('@').setRichTextValues(lista.map(i => [texto_(i.categoria || '')]));
+}
+
+// ---- Categorias editáveis (receita e despesa) ----
+const ABA_CATG = 'Categorias';
+const PADRAO_CATG = {
+  receita: ['Serviços e trabalhos', 'Mensalidade / contribuição', 'Festas e eventos', 'Cursos e oficinas', 'Venda de produtos', 'Doações', 'Outras receitas'],
+  despesa: ['Materiais e oferendas', 'Alimentação e insumos', 'Aluguel e contas', 'Equipe e colaboradores', 'Manutenção e obras', 'Divulgação', 'Impostos e taxas', 'Transporte', 'Outras despesas'],
+};
+
+function escreverCategorias_(sh, obj) {
+  const n = sh.getLastRow();
+  if (n > 1) sh.getRange(2, 1, n - 1, 2).clearContent();
+  const linhas = [];
+  ['receita', 'despesa'].forEach(t => (obj[t] || []).forEach(nome => {
+    if (String(nome).trim() !== '') linhas.push([t, String(nome).trim()]);
+  }));
+  if (!linhas.length) return;
+  sh.getRange(2, 1, linhas.length, 2).setNumberFormat('@')
+    .setRichTextValues(linhas.map(l => [texto_(l[0]), texto_(l[1])]));
+}
+
+function abaCategorias_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(ABA_CATG);
+  if (!sh) {
+    sh = ss.insertSheet(ABA_CATG);
+    sh.getRange(1, 1, 1, 2).setValues([['tipo', 'nome']])
+      .setFontWeight('bold').setBackground('#2a1f4a').setFontColor('#f2b84b');
+    sh.setFrozenRows(1);
+    escreverCategorias_(sh, PADRAO_CATG);
+    sh.autoResizeColumns(1, 2);
+  }
+  return sh;
+}
+
+function lerCategorias_() {
+  const sh = abaCategorias_();
+  const n = sh.getLastRow();
+  const out = { receita: [], despesa: [] };
+  if (n < 2) return PADRAO_CATG;
+  sh.getRange(2, 1, n - 1, 2).getValues().forEach(l => {
+    const t = String(l[0]).trim(), nome = String(l[1]).trim();
+    if (out[t] && nome) out[t].push(nome);
+  });
+  if (!out.receita.length) out.receita = PADRAO_CATG.receita;
+  if (!out.despesa.length) out.despesa = PADRAO_CATG.despesa;
+  return out;
+}
+
+function salvarCategorias_(obj) {
+  escreverCategorias_(abaCategorias_(), { receita: obj.receita || [], despesa: obj.despesa || [] });
 }
 
 /** Proxy para o OpenRouter: a chave nunca sai do servidor. */
