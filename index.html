@@ -404,7 +404,7 @@ function vRevisao() {
   <div class="row wrap"><button class="btn sec" data-radd>+ Outro item</button><span class="sp"></span><button class="btn sec" data-rcancel>Cancelar</button><button class="btn green" data-rsave ${revisao.itens.length ? '' : 'disabled'}>Salvar ${revisao.itens.length > 1 ? 'tudo' : ''}</button></div>`;
 }
 function itemVazio(tipo) {
-  return { tipo: tipo || 'receita', descricao: '', pessoa: '', categoria: L.CATEGORIAS[tipo || 'receita'][0], valor_total: '', parcelas: 1, primeiro_vencimento: '', entrada: '', pago: true, data: L.hojeDe(), forma: '' };
+  return { tipo: tipo || 'receita', descricao: '', pessoa: '', categoria: L.CATEGORIAS[tipo || 'receita'][0], valor_total: '', parcelas: 1, primeiro_vencimento: '', entrada: '', pago: false, data: L.hojeDe(), forma: '' };
 }
 function vSugestaoBaixa() {
   const b = sugestaoBaixa;
