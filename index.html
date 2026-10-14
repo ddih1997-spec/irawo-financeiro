@@ -370,11 +370,6 @@ function vLancar() {
   </div>
   <div class="row" style="margin-top:14px"><button class="btn sec sp" data-lanc="manual">Lançamento manual</button></div>
   ${catalogo.length ? `<h2>Receita rápida</h2><div class="tabs">${catalogo.map((c, i) => `<div class="tab" data-quick="${i}">${esc(c.nome)} · ${brl(c.valor)}</div>`).join('')}</div><div class="hint">Toque no produto, digite o nome da pessoa e salve.</div>` : ''}
-  <div class="card hint" style="margin-top:14px"><b>Exemplos para falar ou escrever:</b><br>
-  • "Fechei um trabalho com a Dona Rita por 1.800 reais em 6 vezes, primeira em 10 de novembro."<br>
-  • "Comprei 300 reais de velas e ervas hoje no pix."<br>
-  • "A Maria pagou a parcela 3."<br>
-  • "Paguei o aluguel de 1.800 ontem."</div>
   <input type="file" id="fileFoto" accept="image/*" multiple hidden>
   <input type="file" id="fileVideo" accept="video/*" hidden>
   <input type="file" id="fileAudio" accept="audio/*" hidden>`;
