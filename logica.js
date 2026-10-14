@@ -268,9 +268,62 @@ Regras:
 ${catalogo && catalogo.filter(c => c.tipo !== 'despesa').length ? '- Receitas padrão da casa (nome = valor): ' + catalogo.filter(c => c.tipo !== 'despesa').map(c => c.nome + ' = ' + c.valor).join('; ') + '. Se a pessoa citar uma delas sem dizer o valor, use o valor padrão, coloque o nome em "descricao" e a categoria dela.\n' : ''}${catalogo && catalogo.filter(c => c.tipo === 'despesa').length ? '- Despesas padrão da casa (nome [categoria]): ' + catalogo.filter(c => c.tipo === 'despesa').map(c => c.nome + ' [' + c.categoria + ']' + (c.valor > 0 ? ' = ' + c.valor : '')).join('; ') + '. Se a pessoa citar uma delas, coloque o nome em "descricao" e use a categoria dela.\n' : ''}${catalogo && catalogo.length ? '- O áudio pode ter sotaque e ruído: palavras que soam parecido com os nomes padrão (ex.: "boi" ou "bori" = BORI, "ebó") devem ser entendidas como esses nomes.\n' : ''}${textoExtra ? 'Texto do usuário: ' + textoExtra : ''}`;
   }
 
+  /** IA SIMULADA do modo demonstração: regras simples, sem rede. Mesmo formato de resposta da IA real. */
+  function interpretarDemo(texto, catalogo, hoje, tipoMidia) {
+    const hj = hoje || hojeDe();
+    const aviso = ' (Simulação do modo demonstração: a IA de verdade só funciona conectada à planilha.)';
+    const cat = catalogo || [];
+    if (tipoMidia === 'imagem') {
+      return { intent: 'lancar', mensagem: 'Li a nota (exemplo).' + aviso, itens: [{ tipo: 'despesa', descricao: 'Compras no mercado', pessoa: 'Mercado Bom Preço', categoria: 'Alimentação e insumos', valor_total: 187.4, parcelas: 1, primeiro_vencimento: hj, entrada: null, pago: true, data: hj, forma: 'pix' }] };
+    }
+    if (tipoMidia === 'audio') {
+      return { intent: 'baixa', mensagem: 'Ouvi: "A Maria pagou a segunda parcela do bori, 500 reais" (exemplo).' + aviso, baixa: { tipo: 'receita', pessoa: 'Maria', descricao: 'BORI', parcela_numero: 2, valor: 500, data_pagamento: hj } };
+    }
+    const tx = String(texto || '').trim();
+    const n = norm(tx);
+    if (!tx) return { intent: 'desconhecido', mensagem: 'Escreva o que aconteceu.' + aviso, itens: [] };
+    const ORD = { primeira: 1, segunda: 2, terceira: 3, quarta: 4, quinta: 5, sexta: 6, setima: 7, oitava: 8, nona: 9, decima: 10 };
+    const MES = ['janeiro', 'fevereiro', 'marco', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+    const numero = s => { const m = String(s).match(/(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d{1,2}))?/); return m ? parseFloat(m[1].replace(/\./g, '') + (m[2] ? '.' + m[2] : '')) : 0; };
+    const data = (() => { if (/\bontem\b/.test(n)) { const { y, m, d } = parse(hj); return hojeDe(new Date(y, m - 1, d - 1)); } return hj; })();
+    const pessoaM = tx.match(/\b(?:com|da|do|de|para|pro|pra|pela|pelo)\s+(?:a\s+|o\s+)?((?:Dona\s+|Seu\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-zà-ú]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-zà-ú]+)?)/);
+    let pessoa = pessoaM ? pessoaM[1] : '';
+    if (!pessoa) { const ini = tx.match(/^(?:A|O)\s+((?:Dona\s+|Seu\s+)?[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-zà-ú]+(?:\s+[A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-zà-ú]+)?)/); if (ini) pessoa = ini[1]; }
+    if (cat.some(c => norm(c.nome) === norm(pessoa))) pessoa = '';
+    const prod = cat.find(c => new RegExp('\\b' + norm(c.nome).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b').test(n));
+    // baixa de parcela
+    const ordM = Object.keys(ORD).find(k => new RegExp('\\b' + k + '\\s+parcela').test(n));
+    const numM = n.match(/parcela\s*(\d+)/);
+    if (/parcela/.test(n) && /(pagou|paguei|recebi|recebemos|quitou|pagamos)/.test(n)) {
+      const valM = n.replace(/parcela\s*\d+/g, '').match(/(\d{1,3}(?:\.\d{3})+|\d+)(?:,\d{1,2})?\s*(reais|r\$)?/);
+      return { intent: 'baixa', mensagem: 'Entendi uma baixa de parcela.' + aviso, baixa: { tipo: /(paguei|pagamos)/.test(n) ? 'despesa' : 'receita', pessoa, descricao: prod ? prod.nome : '', parcela_numero: ordM ? ORD[ordM] : (numM ? +numM[1] : null), valor: valM ? numero(valM[0]) : null, data_pagamento: data } };
+    }
+    // lançamento
+    const parcM = n.match(/(\d+)\s*(?:x|vezes|parcelas)/);
+    const parcelas = parcM ? Math.max(1, +parcM[1]) : 1;
+    const entM = n.match(/entrada de\s*(?:r\$\s*)?([\d.,]+)/);
+    const entrada = entM ? numero(entM[1]) : null;
+    let resto = n.replace(/(\d+)\s*(?:x|vezes|parcelas)/g, ' ').replace(/entrada de\s*(?:r\$\s*)?[\d.,]+/g, ' ').replace(/dia\s+\d+/g, ' ').replace(/\d{1,2}\s+de\s+[a-z]+/g, ' ');
+    const milM = resto.match(/(\d+)\s*mil\b/);
+    let valor = milM ? +milM[1] * 1000 : numero(resto);
+    if (!valor && prod && prod.valor > 0) valor = prod.valor;
+    if (parcM && /(\d+)\s*(?:x|vezes)\s*de\s*(?:r\$\s*)?[\d.,]+/.test(n)) { const v = n.match(/(\d+)\s*(?:x|vezes)\s*de\s*(?:r\$\s*)?([\d.,]+)/); valor = numero(v[2]) * (+v[1]); }
+    const despesa = /(paguei|comprei|gastei|compra|conta de|mercado|gas\b|luz\b|agua\b|aluguel|boleto)/.test(n) || (prod && prod.tipo === 'despesa');
+    const tipo = despesa ? 'despesa' : 'receita';
+    const venc = (() => { const m = n.match(/(\d{1,2})\s+de\s+([a-z]+)/); if (!m) return ''; const mi = MES.indexOf(m[2]); if (mi < 0) return ''; const { y, m: mh } = parse(hj); const ano = mi + 1 < mh ? y + 1 : y; return ymd(ano, mi + 1, Math.min(+m[1], 28)); })();
+    const jaAconteceu = /(recebi|paguei|comprei|gastei|recebemos|pagamos)/.test(n) && parcelas === 1;
+    const cats = CATEGORIAS[tipo];
+    const item = {
+      tipo, descricao: prod ? prod.nome : (tipo === 'despesa' ? 'Despesa' : 'Receita'), pessoa,
+      categoria: prod && prod.categoria ? prod.categoria : cats[0], valor_total: valor || '', parcelas,
+      primeiro_vencimento: venc || (parcelas > 1 ? hj : ''), entrada, pago: jaAconteceu, data, forma: /pix/.test(n) ? 'pix' : (/dinheiro/.test(n) ? 'dinheiro' : (/cartao/.test(n) ? 'cartão' : '')),
+    };
+    return { intent: 'lancar', mensagem: (valor ? 'Montei o lançamento.' : 'Não achei o valor: preencha o campo em rosa.') + aviso, itens: [item] };
+  }
+
   const api = {
     CATEGORIAS, pad, ymd, parse, valida, hojeDe, mesDe, fmtBR, rotuloMes, rotuloMesCurto, addMeses, addMesYM, uid, cent,
-    expandir, planejarBaixa, planejarDesfazer, resumo, serieMeses, previsao, agruparServicos, norm, buscarBaixa, extrairJSON, montarPrompt,
+    expandir, planejarBaixa, planejarDesfazer, interpretarDemo, resumo, serieMeses, previsao, agruparServicos, norm, buscarBaixa, extrairJSON, montarPrompt,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else raiz.L = api;
