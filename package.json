@@ -1,0 +1,5 @@
+{
+  "name": "irawo-financeiro",
+  "private": true,
+  "scripts": { "test": "node --test test/logica.test.js test/regressao.test.js" }
+}
