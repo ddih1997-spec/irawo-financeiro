@@ -39,6 +39,19 @@ function iniciar() {
   return 'Pronto. Copie o TOKEN do log de execução.';
 }
 
+/** Fórmulas via setFormula usam o separador de argumentos do idioma da planilha (pt-BR: ";"). */
+function fx_(formula) {
+  const loc = String(SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetLocale() || '');
+  const virgula = /^(en|ja|zh|ko|he|th|hi)/i.test(loc) || /^(es_(MX|US))/i.test(loc);
+  if (virgula) return formula;
+  let dentro = false, out = '';
+  for (const c of formula) {
+    if (c === '"') dentro = !dentro;
+    out += (c === ',' && !dentro) ? ';' : c;
+  }
+  return out;
+}
+
 function montarResumo_(ss) {
   let r = ss.getSheetByName('Resumo');
   if (!r) r = ss.insertSheet('Resumo', 1);
@@ -59,7 +72,7 @@ function montarResumo_(ss) {
   ];
   dados.forEach((d, i) => {
     r.getRange(i + 1, 1).setValue(d[0]).setFontWeight('bold');
-    r.getRange(i + 1, 2).setFormula(d[1]);
+    r.getRange(i + 1, 2).setFormula(fx_(d[1]));
   });
   r.getRange(2, 2, 6, 1).setNumberFormat('R$ #,##0.00');
   r.setColumnWidth(1, 190); r.setColumnWidth(2, 150);
