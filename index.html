@@ -74,6 +74,11 @@ label.opt input{width:auto;margin-top:3px}
 input,select,textarea{width:100%;background:#fff;border:1px solid var(--line2);border-radius:10px;padding:11px 12px;font-size:16px}
 input:focus,select:focus,textarea:focus{outline:none;border-color:var(--acc);box-shadow:0 0 0 3px rgba(59,76,202,.15)}
 textarea{min-height:90px;resize:vertical}
+.kpi{position:relative}
+.click{cursor:pointer}
+.click:active{background:var(--card2)}
+.kpi.click::after{content:'›';position:absolute;right:14px;top:8px;color:var(--mut);font-size:20px}
+.sublink{text-decoration:underline dotted;cursor:pointer}
 input.need{background:#fde8ee;border-color:#f2b3c3}
 input.need:focus{border-color:#d6456f;box-shadow:0 0 0 3px rgba(214,69,111,.15)}
 .field2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -152,7 +157,7 @@ aplicaCategorias(ls.get('irawo_catg', null));
 let view = 'inicio';
 let mesSel = L.mesDe(L.hojeDe());
 let abertos = new Set();
-let filtroExtrato = { tipo: 'todos', status: 'todos', mes: '' };
+let filtroExtrato = { tipo: 'todos', status: 'todos', mes: '', categoria: '' };
 let abaReceber = 'receita';
 let verQuitados = false;
 let revisao = null;      // {itens:[...], mensagem}
@@ -255,23 +260,30 @@ function render() {
 }
 
 /* ============ INÍCIO (dashboard) ============ */
-function kpi(l, v, cls, s) { return `<div class="card kpi"><div class="l">${l}</div><div class="v ${cls || ''}">${brl(v)}</div>${s ? `<div class="s">${s}</div>` : ''}</div>`; }
+function kpi(l, v, cls, s, nav, navSub) {
+  return `<div class="card kpi ${nav ? 'click' : ''}" ${nav ? `data-nav="${nav}"` : ''}><div class="l">${l}</div><div class="v ${cls || ''}">${brl(v)}</div>${s ? `<div class="s ${navSub ? 'sublink' : ''}" ${navSub ? `data-nav="${navSub}"` : ''}>${s}</div>` : ''}</div>`;
+}
+function abrirExtrato(f) {
+  filtroExtrato = Object.assign({ tipo: 'todos', status: 'todos', mes: '', categoria: '' }, f);
+  revisao = null; sugestaoBaixa = null; ir('extrato');
+}
+const hov = (e, els) => { if (e.native && e.native.target) e.native.target.style.cursor = els.length ? 'pointer' : 'default'; };
 function vInicio() {
   if (carregando && !rows.length) return `<div class="empty"><span class="spin"></span><p>Carregando…</p></div>`;
   const hj = L.hojeDe(), r = L.resumo(rows, mesSel, hj);
   const ultimos = rows.slice().sort((a, b) => String(b.data_pagamento || b.vencimento).localeCompare(String(a.data_pagamento || a.vencimento))).filter(x => x.status === 'pago').slice(0, 6);
   let alertas = '';
-  if (r.vencidoReceber > 0) alertas += `<div class="card" style="border-color:var(--red);margin-bottom:10px"><b class="neg">${brl(r.vencidoReceber)}</b> a receber está <b>atrasado</b>. <a href="#" data-go="receber" style="color:var(--gold)">Ver contas</a></div>`;
-  if (r.vencidoPagar > 0) alertas += `<div class="card" style="border-color:var(--amber);margin-bottom:10px"><b>${brl(r.vencidoPagar)}</b> de contas a pagar vencidas.</div>`;
-  if (r.proximos7Receber > 0) alertas += `<div class="card" style="margin-bottom:10px"><b class="gold">${brl(r.proximos7Receber)}</b> vence nos próximos 7 dias.</div>`;
+  if (r.vencidoReceber > 0) alertas += `<div class="card click" data-nav="receita|atrasada||" style="border-color:var(--red);margin-bottom:10px"><b class="neg">${brl(r.vencidoReceber)}</b> a receber está <b>atrasado</b>. <a href="#" data-go="receber" style="color:var(--gold)">Ver contas</a></div>`;
+  if (r.vencidoPagar > 0) alertas += `<div class="card click" data-nav="despesa|atrasada||" style="border-color:var(--amber);margin-bottom:10px"><b>${brl(r.vencidoPagar)}</b> de contas a pagar vencidas.</div>`;
+  if (r.proximos7Receber > 0) alertas += `<div class="card click" data-nav="receita|pendente||" style="margin-bottom:10px"><b class="gold">${brl(r.proximos7Receber)}</b> vence nos próximos 7 dias.</div>`;
   return `
   <div class="mes"><button class="icbtn" data-mes="-1">‹</button><b>${L.rotuloMes(mesSel)}</b><button class="icbtn" data-mes="1">›</button></div>
   ${alertas}
   <div class="grid kpis">
-    ${kpi('Receitas do mês', r.recebido, 'pos', 'efetivamente recebido')}
-    ${kpi('Gastos no mês', r.gasto, 'neg', 'pagos')}
-    ${kpi('Saldo do mês', r.saldo, r.saldo >= 0 ? 'pos' : 'neg', 'recebido − gastos')}
-    ${kpi('Total a receber', r.aReceber, 'gold', `${brl(r.mesAReceber)} vence neste mês`)}
+    ${kpi('Receitas do mês', r.recebido, 'pos', 'efetivamente recebido', `receita|pago|${mesSel}|`)}
+    ${kpi('Gastos no mês', r.gasto, 'neg', 'pagos', `despesa|pago|${mesSel}|`)}
+    ${kpi('Saldo do mês', r.saldo, r.saldo >= 0 ? 'pos' : 'neg', 'recebido − gastos', `todos|pago|${mesSel}|`)}
+    ${kpi('Total a receber', r.aReceber, 'gold', `${brl(r.mesAReceber)} vence neste mês`, 'receita|pendente||', `receita|pendente|${mesSel}|`)}
   </div>
   <div class="grid two" style="margin-top:12px">
     <div class="card"><b>Receitas × Gastos (6 meses)</b><div style="height:230px;margin-top:8px"><canvas id="gSerie"></canvas></div></div>
@@ -282,8 +294,8 @@ function vInicio() {
     </div>
   </div>
   <div class="grid kpis" style="margin-top:12px">
-    ${kpi('Total a pagar', r.aPagar, '', 'contas futuras')}
-    ${kpi('Atrasado a receber', r.vencidoReceber, r.vencidoReceber ? 'neg' : '', '')}
+    ${kpi('Total a pagar', r.aPagar, '', 'contas futuras', 'despesa|pendente||')}
+    ${kpi('Atrasado a receber', r.vencidoReceber, r.vencidoReceber ? 'neg' : '', '', 'receita|atrasada||')}
   </div>`;
 }
 function itemHtml(r) {
@@ -301,15 +313,15 @@ function desenharGraficos() {
   charts.push(new Chart($('#gSerie'), { type: 'bar', data: { labels: s.meses.map(L.rotuloMesCurto), datasets: [
     { label: 'Receitas', data: s.recebido, backgroundColor: '#12a67a', borderRadius: 4 },
     { label: 'Gastos', data: s.gasto, backgroundColor: '#d6455d', borderRadius: 4 }] },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { ticks: { callback: v => 'R$ ' + v } } } } }));
+    options: { onHover: hov, onClick: (e, els) => { if (els.length) abrirExtrato({ tipo: els[0].datasetIndex === 0 ? 'receita' : 'despesa', status: 'pago', mes: s.meses[els[0].index] }); }, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } }, scales: { y: { ticks: { callback: v => 'R$ ' + v } } } } }));
   const r = L.resumo(rows, mesSel), cats = Object.entries(r.porCategoria).sort((a, b) => b[1] - a[1]);
   if (cats.length) charts.push(new Chart($('#gCat'), { type: 'doughnut', data: { labels: cats.map(c => c[0]), datasets: [{ data: cats.map(c => c[1]), backgroundColor: PALETA, borderColor: '#ffffff', borderWidth: 2 }] },
-    options: { maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: c => `${c.label}: ${brl(c.parsed)}` } } } } }));
+    options: { onHover: hov, onClick: (e, els) => { if (els.length) abrirExtrato({ tipo: 'despesa', status: 'pago', mes: mesSel, categoria: cats[els[0].index][0] }); }, maintainAspectRatio: false, plugins: { legend: { position: 'right', labels: { boxWidth: 12, font: { size: 11 } } }, tooltip: { callbacks: { label: c => `${c.label}: ${brl(c.parsed)}` } } } } }));
   else $('#gCat').parentElement.innerHTML = '<div class="empty">Sem gastos pagos neste mês.</div>';
   const p = L.previsao(rows, L.mesDe(L.hojeDe()), 6);
   const labels = ['Atrasado', ...p.meses.map(L.rotuloMesCurto)], vals = [p.atrasado, ...p.valores];
   charts.push(new Chart($('#gPrev'), { type: 'bar', data: { labels, datasets: [{ data: vals, backgroundColor: vals.map((_, i) => i === 0 ? '#d6455d' : '#3b4cca'), borderRadius: 4 }] },
-    options: { maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => 'R$ ' + v } } } } }));
+    options: { onHover: hov, onClick: (e, els) => { if (!els.length) return; const i = els[0].index; if (i === 0) abrirExtrato({ tipo: 'receita', status: 'atrasada' }); else abrirExtrato({ tipo: 'receita', status: 'pendente', mes: p.meses[i - 1] }); }, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { ticks: { callback: v => 'R$ ' + v } } } } }));
 }
 
 /* ============ CONTAS (a receber / a pagar, com baixa) ============ */
@@ -347,17 +359,22 @@ function parcHtml(p) {
 function vExtrato() {
   let l = rows.slice();
   if (filtroExtrato.tipo !== 'todos') l = l.filter(r => r.tipo === filtroExtrato.tipo);
-  if (filtroExtrato.status !== 'todos') l = l.filter(r => r.status === filtroExtrato.status);
+  const hj = L.hojeDe();
+  if (filtroExtrato.status === 'atrasada') l = l.filter(r => r.status === 'pendente' && r.vencimento < hj);
+  else if (filtroExtrato.status !== 'todos') l = l.filter(r => r.status === filtroExtrato.status);
+  if (filtroExtrato.categoria) l = l.filter(r => r.categoria === filtroExtrato.categoria);
   if (filtroExtrato.mes) l = l.filter(r => L.mesDe(r.status === 'pago' ? r.data_pagamento : r.vencimento) === filtroExtrato.mes);
   l.sort((a, b) => String(b.status === 'pago' ? b.data_pagamento : b.vencimento).localeCompare(String(a.status === 'pago' ? a.data_pagamento : a.vencimento)));
-  const meses = [...new Set(rows.map(r => L.mesDe(r.status === 'pago' ? r.data_pagamento : r.vencimento)).filter(Boolean))].sort().reverse();
+  const meses = [...new Set([...rows.map(r => L.mesDe(r.status === 'pago' ? r.data_pagamento : r.vencimento)), filtroExtrato.mes].filter(Boolean))].sort().reverse();
+  const desc = [({ receita: 'Receitas', despesa: 'Gastos' })[filtroExtrato.tipo] || 'Receitas e gastos', ({ pago: 'pagos', pendente: 'pendentes', atrasada: 'atrasados' })[filtroExtrato.status], filtroExtrato.categoria, filtroExtrato.mes ? L.rotuloMes(filtroExtrato.mes) : ''].filter(Boolean).join(' · ');
   const tot = L.cent ? l.reduce((a, r) => a + (r.tipo === 'receita' ? 1 : -1) * L.cent(r.valor), 0) / 100 : 0;
   const t = (k, v, n) => `<div class="tab ${filtroExtrato[k] === v ? 'on' : ''}" data-f="${k}:${v}">${n}</div>`;
   return `
   <div class="tabs">${t('tipo', 'todos', 'Tudo')}${t('tipo', 'receita', 'Receitas')}${t('tipo', 'despesa', 'Gastos')}</div>
-  <div class="tabs">${t('status', 'todos', 'Todos')}${t('status', 'pago', 'Pagos')}${t('status', 'pendente', 'Pendentes')}</div>
+  <div class="tabs">${t('status', 'todos', 'Todos')}${t('status', 'pago', 'Pagos')}${t('status', 'pendente', 'Pendentes')}${t('status', 'atrasada', 'Atrasadas')}</div>
+  ${filtroExtrato.categoria ? `<div class="tabs"><div class="tab on" data-f="categoria:">Categoria: ${esc(filtroExtrato.categoria)} ✕</div></div>` : ''}
   <select id="fMes"><option value="">Todos os meses</option>${meses.map(m => `<option value="${m}" ${filtroExtrato.mes === m ? 'selected' : ''}>${L.rotuloMes(m)}</option>`).join('')}</select>
-  <div class="card" style="margin-top:12px"><div class="row mut" style="font-size:13px"><span>${l.length} lançamento(s)</span><span class="sp"></span><span class="${tot >= 0 ? 'pos' : 'neg'}">Resultado ${brl(tot)}</span></div>
+  <div class="card" style="margin-top:12px"><div style="font-weight:700;margin-bottom:6px">${esc(desc)}</div><div class="row mut" style="font-size:13px"><span>${l.length} lançamento(s)</span><span class="sp"></span><span class="${tot >= 0 ? 'pos' : 'neg'}">Resultado ${brl(tot)}</span></div>
   ${l.length ? l.map(itemHtml).join('') : '<div class="empty">Nenhum lançamento.</div>'}</div>`;
 }
 
@@ -531,7 +548,7 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 b</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 c</p>`;
 }
 async function hashSenha(pw, saltB64) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -671,10 +688,11 @@ const num = s => { const v = parseFloat(String(s).replace(/\./g, m => (String(s)
 
 /* ============ eventos (delegação) ============ */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
+  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); if (d.go !== 'lancar') { revisao = null; sugestaoBaixa = null; } return ir(d.go); }
+  if (d.nav !== undefined) { const [tipo, status, mes, categoria] = d.nav.split('|'); return abrirExtrato({ tipo: tipo || 'todos', status: status || 'todos', mes: mes || '', categoria: categoria || '' }); }
   if (d.mes) { mesSel = L.addMesYM(mesSel, +d.mes); return render(); }
   if (d.aba) { abaReceber = d.aba; return render(); }
   if (d.tog) { abertos.has(d.tog) ? abertos.delete(d.tog) : abertos.add(d.tog); return render(); }
