@@ -561,7 +561,7 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 a</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 b</p>`;
 }
 async function decifraConfig(pw) {
   const r = await fetch('config.enc.json', { cache: 'no-store' }); if (!r.ok) throw new Error('sem config');
@@ -830,6 +830,7 @@ document.addEventListener('click', async e => {
     if (await conectaComSenha(pw)) {
       await definirSenha(pw);
       if (window.PublicKeyCredential && confirm('Quer entrar também com digital / rosto?')) { try { await registrarBiometria(); } catch {} }
+      view = 'inicio';
       return desbloquear();
     }
     $('#lkErr').textContent = 'Senha incorreta.'; $('#lkPw').value = ''; return;
