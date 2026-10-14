@@ -183,7 +183,7 @@ async function api(acao, extra = {}) {
   let j;
   try { j = await r.json(); } catch { throw new Error('Resposta inesperada do servidor.'); }
   if (!j.ok) {
-    if (j.erro === 'Acesso negado' && acao !== 'status') { cfg = null; ls.del('irawo_cfg'); ls.del('irawo_cfg_real'); view = 'ajustes'; render(); throw new Error('A senha da casa foi trocada. Digite a nova senha em Ajustes → "Já tem a senha da casa?".'); }
+    if (j.erro === 'Acesso negado' && acao !== 'status') { cfg = null; ls.del('irawo_cfg'); ls.del('irawo_cfg_real'); ls.del('irawo_auth'); modoLocal = false; bloqueado = true; view = 'inicio'; telaBloqueio(); throw new Error('A senha foi trocada. Digite a nova senha.'); }
     throw new Error(j.erro || 'Erro no servidor');
   }
   return j;
@@ -564,12 +564,12 @@ function vAjustes() {
   ${cardCatalogo('receita')}${cardCatalogo('despesa')}
   <h2>Segurança</h2>
   <div class="card">
-    <div class="row wrap">${cfg && cfg.url !== 'demo' ? '<button class="btn sec sm" id="trocaCasa">Trocar senha</button><button class="btn sec sm" id="trocaToken">Token</button>' : `<button class="btn sec sm" id="trocaSenha">${aut ? 'Trocar senha' : 'Criar senha'}</button>`}
+    <div class="row wrap">${cfg && cfg.url !== 'demo' ? '<button class="btn sec sm" id="trocaCasa">Trocar senha</button>' : `<button class="btn sec sm" id="trocaSenha">${aut ? 'Trocar senha' : 'Criar senha'}</button>`}
     ${aut && window.PublicKeyCredential ? `<button class="btn sec sm" id="toggleBio">${aut.cred ? 'Desativar digital / rosto' : 'Ativar digital / rosto'}</button>` : ''}
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 f</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 g</p>`;
 }
 async function decifraConfig(pw) {
   const c = await blobCasa();
@@ -739,7 +739,7 @@ const num = s => { const v = parseFloat(String(s).replace(/\./g, m => (String(s)
 
 /* ============ eventos (delegação) ============ */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnReal,#btnCasa,#lkCasa,#lkOutra,#btnSair,#trocaSenha,#trocaCasa,#okCasaNova,#trocaToken,#okToken,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
+  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnReal,#btnCasa,#lkCasa,#lkOutra,#btnSair,#trocaSenha,#trocaCasa,#okCasaNova,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); if (d.go !== 'lancar') { revisao = null; sugestaoBaixa = null; } return ir(d.go); }
@@ -862,25 +862,10 @@ document.addEventListener('click', async e => {
   if (t.id === 'btnSair') { if (confirm('Desconectar deste aparelho? (os dados continuam na planilha)')) { cfg = null; rows = []; ls.del('irawo_cfg'); ls.del('irawo_cfg_real'); ls.del('irawo_cache'); render(); } return; }
   if (t.id === 'trocaCasa') {
     modal(`<h2 style="margin-top:0">Trocar senha</h2>
-    <div class="hint">A nova senha passa a valer para entrar em aparelhos novos. <b>Todos os outros aparelhos serão desconectados</b> e vão precisar digitar a senha nova. Use uma frase de pelo menos 8 caracteres.</div>
+    <div class="hint">É a mesma senha para tudo: entrar neste aparelho e nos outros. Depois da troca, os outros aparelhos pedem a senha nova na próxima vez. Use uma frase de pelo menos 8 caracteres.</div>
     <label>Nova senha</label><input id="nCasa1" type="password" autocomplete="new-password">
     <label>Repita a nova senha</label><input id="nCasa2" type="password" autocomplete="new-password">
     <div class="row" style="margin-top:16px"><button class="btn sec sp" data-close>Cancelar</button><button class="btn sp" id="okCasaNova">Trocar senha</button></div>`);
-    return;
-  }
-  if (t.id === 'trocaToken') {
-    modal(`<h2 style="margin-top:0">Token de acesso</h2>
-    <div class="hint">O token é a chave que liga os aparelhos à planilha. Ao <b>renovar</b>, uma chave nova é criada e <b>todos os outros aparelhos são desconectados</b>; eles voltam a entrar digitando a senha. A senha continua a mesma. Use se perder um aparelho ou desconfiar de alguém.</div>
-    <label>Senha atual</label><input id="tkSenha" type="password" autocomplete="current-password">
-    <div class="row" style="margin-top:16px"><button class="btn sec sp" data-close>Cancelar</button><button class="btn sp" id="okToken">Renovar token</button></div>`);
-    return;
-  }
-  if (t.id === 'okToken') {
-    const pw = $('#tkSenha').value; if (!pw) return toast('Digite a senha atual.', true);
-    t.disabled = true;
-    try { await decifraConfig(pw); } catch { t.disabled = false; return toast('Senha incorreta.', true); }
-    try { await trocarSenhaCasa(pw); fecharModal(); toast('Token renovado. Os outros aparelhos precisam entrar de novo.'); }
-    catch (er) { t.disabled = false; toast(er.message, true); }
     return;
   }
   if (t.id === 'okCasaNova') {
