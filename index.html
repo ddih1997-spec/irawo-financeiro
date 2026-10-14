@@ -561,12 +561,12 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 g</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 a</p>`;
 }
 async function decifraConfig(pw) {
   const r = await fetch('config.enc.json', { cache: 'no-store' }); if (!r.ok) throw new Error('sem config');
   const c = await r.json();
-  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(String(pw).normalize('NFC').trim()), 'PBKDF2', false, ['deriveKey']);
   const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64d(c.salt), iterations: c.iter, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(c.iv) }, key, b64d(c.ct));
   return JSON.parse(new TextDecoder().decode(pt));

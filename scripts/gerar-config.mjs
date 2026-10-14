@@ -2,7 +2,8 @@
 // Uso:  URL=... TOKEN=... SENHA=... node scripts/gerar-config.mjs
 import { pbkdf2Sync, randomBytes, createCipheriv } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
-const { URL: u, TOKEN: t, SENHA: senha } = process.env;
+const { URL: u, TOKEN: t } = process.env;
+const senha = String(process.env.SENHA || '').normalize('NFC').trim();   // o app normaliza igual
 if (!u || !t || !senha) { console.error('Informe URL, TOKEN e SENHA.'); process.exit(1); }
 if (senha.length < 8) { console.error('Use uma senha com pelo menos 8 caracteres.'); process.exit(1); }
 const iter = 300000, salt = randomBytes(16), iv = randomBytes(12);
