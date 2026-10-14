@@ -8,6 +8,8 @@ const CAB = ['id', 'grupo_id', 'tipo', 'descricao', 'pessoa', 'categoria', 'valo
   'status', 'data_pagamento', 'parcela', 'total_parcelas', 'forma', 'obs', 'criado_em'];
 // texto puro: datas (não virar Date) e campos livres (não virar fórmula, ex.: "=IMPORTRANGE(...)")
 const COLUNAS_TEXTO = ['vencimento', 'data_pagamento', 'criado_em', 'descricao', 'pessoa', 'categoria', 'forma', 'obs'];
+// a chave pode ter qualquer um destes nomes nas Propriedades do script
+function chaveIA_(props) { return props.getProperty('OPENROUTER_KEY') || props.getProperty('OPENROUTER_API_KEY'); }
 const MODELO_PADRAO = 'google/gemini-2.5-flash';
 const APP_URL = 'https://ddih1997-spec.github.io/irawo-financeiro/';
 
@@ -46,13 +48,14 @@ function montarResumo_(ss) {
   const somaPago = tipo => `=SUMPRODUCT((${rng('C')}="${tipo}")*(${rng('I')}="pago")*(LEFT(${rng('J')},7)=B1)*${rng('G')})`;
   const somaPend = (tipo, extra) => `=SUMPRODUCT((${rng('C')}="${tipo}")*(${rng('I')}="pendente")${extra || ''}*${rng('G')})`;
   const dados = [
-    ['Mês (aaaa-mm)', '=TEXT(TODAY(),"yyyy-mm")'],
+    ['Mês (aaaa-mm)', '=YEAR(TODAY())&"-"&TEXT(MONTH(TODAY()),"00")'],
     ['Recebido no mês', somaPago('receita')],
     ['Gastos no mês', somaPago('despesa')],
     ['Saldo do mês', '=B2-B3'],
     ['Total a receber', somaPend('receita')],
     ['Total a pagar', somaPend('despesa')],
-    ['A receber vencido', somaPend('receita', `*(${rng('H')}<TEXT(TODAY(),"yyyy-mm-dd"))`)],
+    ['A receber vencido', somaPend('receita', `*(${rng('H')}<B8)`)],
+    ['Hoje (aaaa-mm-dd)', '=B1&"-"&TEXT(DAY(TODAY()),"00")'],
   ];
   dados.forEach((d, i) => {
     r.getRange(i + 1, 1).setValue(d[0]).setFontWeight('bold');
@@ -76,7 +79,7 @@ function doPost(e) {
     lock.waitLock(25000);
     try {
       switch (req.acao) {
-        case 'status': return saida_({ ok: true, temChave: !!props.getProperty('OPENROUTER_KEY'), modelo: props.getProperty('MODELO') || MODELO_PADRAO });
+        case 'status': return saida_({ ok: true, temChave: !!chaveIA_(props), modelo: props.getProperty('MODELO') || MODELO_PADRAO });
         case 'listar': return saida_({ ok: true, dados: lerTudo_() });
         case 'adicionar': adicionar_(req.itens || []); return saida_({ ok: true, dados: lerTudo_() });
         case 'atualizar': atualizar_(req.itens || []); return saida_({ ok: true, dados: lerTudo_() });
@@ -177,7 +180,7 @@ function excluir_(ids) {
 /** Proxy para o OpenRouter: a chave nunca sai do servidor. */
 function ia_(req) {
   const props = PropertiesService.getScriptProperties();
-  const chave = props.getProperty('OPENROUTER_KEY');
+  const chave = chaveIA_(props);
   if (!chave) return { ok: false, erro: 'Chave do OpenRouter ainda não configurada (Ajustes).' };
   const content = [{ type: 'text', text: String(req.prompt || '') }];
   (req.midias || []).forEach(m => {
@@ -220,7 +223,7 @@ function linkDeAcesso() {
   const cfg = Utilities.base64Encode(JSON.stringify({ u: url, t: token }), Utilities.Charset.UTF_8);
   const link = APP_URL + '#cfg=' + encodeURIComponent(cfg);
   r.getRange('A10').setValue('Abrir o app já configurado (toque uma vez no celular):').setFontWeight('bold');
-  r.getRange('A11').setFormula('=HYPERLINK("' + link + '","▶ Abrir IRAWÒ")');
+  r.getRange('A11').setRichTextValue(SpreadsheetApp.newRichTextValue().setText('▶ Abrir IRAWÒ').setLinkUrl(link).build());
   r.getRange('A12').setValue('Atenção: este link contém a chave de acesso. Não compartilhe a planilha.').setFontColor('#c0392b');
   console.log('Link gravado na aba Resumo (A11).');
 }
