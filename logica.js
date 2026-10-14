@@ -153,6 +153,67 @@
       .sort((a, b) => (a.quitado - b.quitado) || String(a.proxima || '9').localeCompare(String(b.proxima || '9')));
   }
 
+  /**
+   * Baixa de parcela com valor diferente do combinado.
+   * modo: 'quitar' (parcela fica com o valor pago), 'ajustar' (diferença dividida nas próximas parcelas,
+   * mantendo o total) ou 'parcial' (só se pagou menos: o restante continua pendente).
+   */
+  const MARCA = /\s*\[prev=([\d.]+);modo=(\w+)\]/;
+  const semMarca = o => String(o || '').replace(MARCA, '');
+
+  /** Desfaz uma baixa, restaurando o valor previsto e o efeito do modo escolhido (ajustar / parcial). */
+  function planejarDesfazer(rows, id) {
+    const r = rows.find(x => String(x.id) === String(id));
+    if (!r) throw new Error('Parcela não encontrada');
+    const m = String(r.obs || '').match(MARCA);
+    const atualizar = [{ id: r.id, status: 'pendente', data_pagamento: '' }];
+    const excluir = [];
+    if (!m) return { atualizar, excluir };
+    const prev = cent(m[1]), pago = cent(r.valor), diff = prev - pago, modo = m[2];
+    atualizar[0].valor = prev / 100;
+    atualizar[0].obs = semMarca(r.obs);
+    if (modo === 'parcial') {
+      const resto = rows.find(x => x.grupo_id === r.grupo_id && String(x.id) !== String(r.id) && pendente(x) &&
+        x.parcela === r.parcela && String(x.obs || '').startsWith('Restante da parcela'));
+      if (resto) excluir.push(resto.id);
+    } else if (modo === 'ajustar' && diff !== 0) {
+      const outras = rows.filter(x => x.grupo_id === r.grupo_id && String(x.id) !== String(r.id) && pendente(x) && x.parcela > r.parcela)
+        .sort((a, b) => String(a.vencimento).localeCompare(String(b.vencimento)));
+      if (outras.length) {
+        const por = Math.trunc(diff / outras.length), resto = diff - por * outras.length;
+        outras.forEach((o, i) => atualizar.push({ id: o.id, valor: Math.max(0, cent(o.valor) - por - (i === outras.length - 1 ? resto : 0)) / 100 }));
+      }
+    }
+    return { atualizar, excluir };
+  }
+
+  function planejarBaixa(rows, id, op) {
+    const r = rows.find(x => String(x.id) === String(id));
+    if (!r) throw new Error('Parcela não encontrada');
+    const pago = cent(op.valor), orig = cent(r.valor), diff = orig - pago;
+    const atualizar = [{ id: r.id, status: 'pago', data_pagamento: valida(op.data) ? op.data : hojeDe(), valor: pago / 100, forma: op.forma || r.forma || '' }];
+    const adicionar = [];
+    if (diff !== 0) atualizar[0].obs = semMarca(r.obs) + `[prev=${(orig / 100).toFixed(2)};modo=${op.modo || 'quitar'}]`;
+    if (diff > 0 && op.modo === 'parcial') {
+      adicionar.push({
+        grupo_id: r.grupo_id, tipo: r.tipo, descricao: r.descricao, pessoa: r.pessoa, categoria: r.categoria, forma: '',
+        obs: `Restante da parcela ${r.parcela}`, valor: diff / 100, vencimento: r.vencimento, status: 'pendente',
+        data_pagamento: '', parcela: r.parcela, total_parcelas: r.total_parcelas,
+      });
+    } else if (diff !== 0 && op.modo === 'ajustar') {
+      const outras = rows.filter(x => x.grupo_id === r.grupo_id && String(x.id) !== String(r.id) && pendente(x) && x.parcela > r.parcela)
+        .sort((a, b) => String(a.vencimento).localeCompare(String(b.vencimento)));
+      if (outras.length) {
+        const por = Math.trunc(diff / outras.length), resto = diff - por * outras.length;
+        outras.forEach((o, i) => {
+          const nv = Math.max(0, cent(o.valor) + por + (i === outras.length - 1 ? resto : 0));
+          atualizar.push({ id: o.id, valor: nv / 100 });
+        });
+      }
+    }
+    return { atualizar, adicionar, diferenca: diff / 100 };
+  }
+
   const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim();
 
   /** Sugere parcelas pendentes que combinam com o pedido de baixa ditado/enviado. */
@@ -180,7 +241,7 @@
   }
 
   const DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
-  function montarPrompt(hoje, textoExtra) {
+  function montarPrompt(hoje, textoExtra, catalogo) {
     const { y, m, d } = parse(hoje);
     const dia = DIAS[new Date(y, m - 1, d).getDay()];
     return `Você é o assistente financeiro da casa de axé IRAWÒ. Hoje é ${dia}, ${hoje}.
@@ -203,12 +264,12 @@ Regras:
 - Sem ano, use o ano de hoje. Sem data de pagamento dita, use hoje.
 - Se não der para saber o valor, devolva itens=[] e peça a informação em "mensagem".
 - Vários lançamentos na mesma fala/imagem: vários itens.
-${textoExtra ? 'Texto do usuário: ' + textoExtra : ''}`;
+${catalogo && catalogo.length ? '- Produtos e serviços padrão da casa (nome = valor): ' + catalogo.map(c => c.nome + ' = ' + c.valor).join('; ') + '. Se a pessoa citar um deles sem dizer o valor, use o valor padrão, coloque o nome do produto em "descricao" e a categoria dele.\n' : ''}${textoExtra ? 'Texto do usuário: ' + textoExtra : ''}`;
   }
 
   const api = {
     CATEGORIAS, pad, ymd, parse, valida, hojeDe, mesDe, fmtBR, rotuloMes, rotuloMesCurto, addMeses, addMesYM, uid, cent,
-    expandir, resumo, serieMeses, previsao, agruparServicos, norm, buscarBaixa, extrairJSON, montarPrompt,
+    expandir, planejarBaixa, planejarDesfazer, resumo, serieMeses, previsao, agruparServicos, norm, buscarBaixa, extrairJSON, montarPrompt,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else raiz.L = api;

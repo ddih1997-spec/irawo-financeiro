@@ -101,6 +101,8 @@ function doPost(e) {
         case 'adicionar': adicionar_(req.itens || []); return saida_({ ok: true, dados: lerTudo_() });
         case 'atualizar': atualizar_(req.itens || []); return saida_({ ok: true, dados: lerTudo_() });
         case 'excluir': excluir_(req.ids || []); return saida_({ ok: true, dados: lerTudo_() });
+        case 'catalogo': return saida_({ ok: true, dados: lerCatalogo_() });
+        case 'salvarCatalogo': salvarCatalogo_(req.itens || []); return saida_({ ok: true, dados: lerCatalogo_() });
         case 'salvarChave':
           if (!req.chave || String(req.chave).length < 20) return saida_({ ok: false, erro: 'Chave inválida' });
           props.setProperty('OPENROUTER_KEY', String(req.chave).trim());
@@ -170,7 +172,7 @@ function adicionar_(itens) {
   sh.getRange(ini, 1, linhas.length, CAB.length).setValues(bruto);
   TEXTOS.forEach(c => {
     const i = CAB.indexOf(c);
-    sh.getRange(ini, i + 1, linhas.length, 1).setRichTextValues(linhas.map(l => [texto_(l[i])]));
+    sh.getRange(ini, i + 1, linhas.length, 1).setNumberFormat('@').setRichTextValues(linhas.map(l => [texto_(l[i])]));
   });
 }
 
@@ -192,7 +194,7 @@ function atualizar_(itens) {
       const col = CAB.indexOf(k);
       if (col < 1 || k === 'criado_em') return; // nunca altera o id
       const cel = sh.getRange(linha, col + 1);
-      if (TEXTOS.indexOf(k) >= 0) { cel.setRichTextValue(texto_(it[k])); return; }
+      if (TEXTOS.indexOf(k) >= 0) { cel.setNumberFormat('@').setRichTextValue(texto_(it[k])); return; }
       if (COLUNAS_TEXTO.indexOf(k) >= 0) cel.setNumberFormat('@');
       cel.setValue(it[k] === null ? '' : it[k]);
     });
@@ -203,6 +205,45 @@ function excluir_(ids) {
   const sh = aba_();
   const m = mapaIds_(sh);
   ids.map(id => m[id]).filter(Boolean).sort((a, b) => b - a).forEach(l => sh.deleteRow(l));
+}
+
+// ---- Receitas padrão (produtos e serviços com preço) ----
+const ABA_CAT = 'Catalogo';
+const PADRAO_CAT = [['BORI', 3000, 'Serviços e trabalhos'], ['EBÓ', 800, 'Serviços e trabalhos'], ['Yahuaska', 300, 'Serviços e trabalhos']];
+
+function abaCatalogo_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sh = ss.getSheetByName(ABA_CAT);
+  if (!sh) {
+    sh = ss.insertSheet(ABA_CAT);
+    sh.getRange(1, 1, 1, 3).setValues([['nome', 'valor', 'categoria']])
+      .setFontWeight('bold').setBackground('#2a1f4a').setFontColor('#f2b84b');
+    sh.setFrozenRows(1);
+    sh.getRange(2, 1, PADRAO_CAT.length, 3).setValues(PADRAO_CAT);
+    sh.getRange(2, 2, 200, 1).setNumberFormat('R$ #,##0.00');
+    sh.autoResizeColumns(1, 3);
+  }
+  return sh;
+}
+
+function lerCatalogo_() {
+  const sh = abaCatalogo_();
+  const n = sh.getLastRow();
+  if (n < 2) return [];
+  return sh.getRange(2, 1, n - 1, 3).getValues()
+    .filter(l => String(l[0]).trim() !== '')
+    .map(l => ({ nome: String(l[0]), valor: Number(l[1]) || 0, categoria: String(l[2] || '') }));
+}
+
+function salvarCatalogo_(itens) {
+  const sh = abaCatalogo_();
+  const n = sh.getLastRow();
+  if (n > 1) sh.getRange(2, 1, n - 1, 3).clearContent();
+  const lista = itens.filter(i => String(i.nome || '').trim() !== '').slice(0, 200);
+  if (!lista.length) return;
+  sh.getRange(2, 1, lista.length, 1).setNumberFormat('@').setRichTextValues(lista.map(i => [texto_(i.nome)]));
+  sh.getRange(2, 2, lista.length, 1).setValues(lista.map(i => [Number(i.valor) || 0]));
+  sh.getRange(2, 3, lista.length, 1).setNumberFormat('@').setRichTextValues(lista.map(i => [texto_(i.categoria || '')]));
 }
 
 /** Proxy para o OpenRouter: a chave nunca sai do servidor. */
