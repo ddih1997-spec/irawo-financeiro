@@ -1,8 +1,8 @@
-const CACHE = 'irawo-v2';
+const CACHE = 'irawo-v3';
 const BASE = ['./', './index.html', './logica.js', './manifest.json', './icon-192.png'];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(BASE.map(u => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -11,11 +11,11 @@ self.addEventListener('activate', e => {
     .then(() => self.clients.claim()));
 });
 
-// Rede primeiro (sempre a versão mais nova); cache só como reserva offline.
+// Rede primeiro e sem cache HTTP (sempre a versão mais nova); cache só como reserva offline.
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== location.origin) return;
-  e.respondWith(fetch(req).then(res => {
+  e.respondWith(fetch(req, { cache: 'no-store' }).then(res => {
     const copia = res.clone();
     caches.open(CACHE).then(c => c.put(req, copia));
     return res;

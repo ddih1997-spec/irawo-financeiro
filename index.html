@@ -523,7 +523,7 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 1.0</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026</p>`;
 }
 async function hashSenha(pw, saltB64) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -828,7 +828,12 @@ document.addEventListener('change', async e => {
     if (m) { const o = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))); if (o.u && o.t && /\/dev$/.test(o.u)) window.__cfgErro = 'Link com endereço de teste. Gere o link de novo na planilha.'; else if (o.u && o.t) { cfg = { url: o.u, token: o.t }; ls.set('irawo_cfg', cfg); rows = []; ls.del('irawo_cache'); }
       history.replaceState(null, '', location.pathname + location.search); }
   } catch {}
-  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    const tinha = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(r => r.update()).catch(() => {});
+    // quando uma versão nova assume o controle, recarrega uma vez para mostrar o app atualizado
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (tinha && !window.__recarregou) { window.__recarregou = true; location.reload(); } });
+  }
   bloqueado = !!ls.get('irawo_auth') || true;
   telaBloqueio();
   render();
