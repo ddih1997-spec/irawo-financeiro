@@ -564,12 +564,12 @@ function vAjustes() {
   ${cardCatalogo('receita')}${cardCatalogo('despesa')}
   <h2>Segurança</h2>
   <div class="card">
-    <div class="row wrap"><button class="btn sec sm" id="trocaSenha">${aut ? 'Trocar senha' : 'Criar senha'}</button>
+    <div class="row wrap">${cfg && cfg.url !== 'demo' ? '<button class="btn sec sm" id="trocaCasa">Trocar senha</button>' : `<button class="btn sec sm" id="trocaSenha">${aut ? 'Trocar senha' : 'Criar senha'}</button>`}
     ${aut && window.PublicKeyCredential ? `<button class="btn sec sm" id="toggleBio">${aut.cred ? 'Desativar digital / rosto' : 'Ativar digital / rosto'}</button>` : ''}
-    ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}${cfg && cfg.url !== 'demo' ? '<button class="btn sec sm" id="trocaCasa">Trocar senha da casa</button>' : ''}</div>
+    ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 d</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 15/10/2026 e</p>`;
 }
 async function decifraConfig(pw) {
   const c = await blobCasa();
@@ -861,9 +861,9 @@ document.addEventListener('click', async e => {
   if (t.id === 'btnDemo') { cfg = { url: 'demo', token: '' }; ls.set('irawo_cfg', cfg); if (!ls.get('irawo_demo', []).length) semearDemo(); rows = ls.get('irawo_demo', []); view = 'inicio'; return carregar(); }
   if (t.id === 'btnSair') { if (confirm('Desconectar deste aparelho? (os dados continuam na planilha)')) { cfg = null; rows = []; ls.del('irawo_cfg'); ls.del('irawo_cfg_real'); ls.del('irawo_cache'); render(); } return; }
   if (t.id === 'trocaCasa') {
-    modal(`<h2 style="margin-top:0">Trocar a senha da casa</h2>
+    modal(`<h2 style="margin-top:0">Trocar senha</h2>
     <div class="hint">A nova senha passa a valer para entrar em aparelhos novos. <b>Todos os outros aparelhos serão desconectados</b> e vão precisar digitar a senha nova. Use uma frase de pelo menos 8 caracteres.</div>
-    <label>Nova senha da casa</label><input id="nCasa1" type="password" autocomplete="new-password">
+    <label>Nova senha</label><input id="nCasa1" type="password" autocomplete="new-password">
     <label>Repita a nova senha</label><input id="nCasa2" type="password" autocomplete="new-password">
     <div class="row" style="margin-top:16px"><button class="btn sec sp" data-close>Cancelar</button><button class="btn sp" id="okCasaNova">Trocar senha</button></div>`);
     return;
@@ -873,7 +873,7 @@ document.addEventListener('click', async e => {
     if (senhaNorm(a).length < 8) return toast('Use pelo menos 8 caracteres.', true);
     if (a !== b) return toast('As senhas não conferem.', true);
     t.disabled = true;
-    try { await trocarSenhaCasa(a); fecharModal(); toast('Senha da casa trocada. Os outros aparelhos precisam da senha nova.'); }
+    try { await trocarSenhaCasa(a); fecharModal(); toast('Senha trocada. Os outros aparelhos precisam da senha nova.'); }
     catch (er) { t.disabled = false; toast(er.message, true); }
     return;
   }
