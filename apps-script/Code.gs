@@ -92,8 +92,10 @@ function doPost(e) {
     const props = PropertiesService.getScriptProperties();
     const token = props.getProperty('TOKEN');
     if (!token || req.token !== token) return saida_({ ok: false, erro: 'Acesso negado' });
-    const lock = LockService.getScriptLock();
-    lock.waitLock(25000);
+    // trava só nas gravações; leituras e a IA (lenta) não bloqueiam os outros usuários
+    const GRAVA = ['adicionar', 'atualizar', 'excluir', 'catalogo', 'salvarCatalogo', 'categorias', 'salvarCategorias'];
+    const lock = GRAVA.indexOf(req.acao) >= 0 ? LockService.getScriptLock() : null;
+    if (lock) lock.waitLock(25000);
     try {
       switch (req.acao) {
         case 'status': return saida_({ ok: true, temChave: !!chaveIA_(props), modelo: modelos_(props)[0] });
@@ -113,7 +115,7 @@ function doPost(e) {
         default: return saida_({ ok: false, erro: 'Ação desconhecida' });
       }
     } finally {
-      lock.releaseLock();
+      if (lock) lock.releaseLock();
     }
   } catch (err) {
     return saida_({ ok: false, erro: String(err && err.message || err) });
@@ -312,7 +314,7 @@ function salvarCategorias_(obj) {
   escreverCategorias_(abaCategorias_(), { receita: obj.receita || [], despesa: obj.despesa || [] });
 }
 
-const MODELOS_PADRAO = ['google/gemini-3.1-pro-preview', 'google/gemini-2.5-flash'];
+const MODELOS_PADRAO = ['google/gemini-3.8-flash', 'google/gemini-2.5-flash'];
 function modelos_(props) {
   const m = props.getProperty('MODELO');
   return m ? [m].concat(MODELOS_PADRAO.filter(x => x !== m)) : MODELOS_PADRAO;
