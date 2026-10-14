@@ -11,6 +11,8 @@ const COLUNAS_TEXTO = ['vencimento', 'data_pagamento', 'criado_em', 'descricao',
 // a chave pode ter qualquer um destes nomes nas Propriedades do script
 function chaveIA_(props) { return props.getProperty('OPENROUTER_KEY') || props.getProperty('OPENROUTER_API_KEY'); }
 const MODELO_PADRAO = 'google/gemini-2.5-flash';
+// endereço da implantação publicada (getUrl() no editor devolve /dev, que só funciona para o dono)
+const WEBAPP_URL = 'https://script.google.com/macros/s/AKfycbyIuCJxfN9QW-I-kJFKF_KpkLsYg-KTYOxwZVuaFMTy0ezbv7JF2G2-bEex4wjY0F6r/exec';
 const APP_URL = 'https://ddih1997-spec.github.io/irawo-financeiro/';
 
 /** Rode uma vez no editor: cria as abas, o resumo e gera o TOKEN de acesso. */
@@ -230,7 +232,7 @@ function ia_(req) {
 function linkDeAcesso() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const r = ss.getSheetByName('Resumo') || ss.insertSheet('Resumo', 1);
-  const url = ScriptApp.getService().getUrl();
+  const url = WEBAPP_URL;
   const token = PropertiesService.getScriptProperties().getProperty('TOKEN');
   if (!url || !token) throw new Error('Publique o Web App e rode iniciar() antes.');
   const cfg = Utilities.base64Encode(JSON.stringify({ u: url, t: token }), Utilities.Charset.UTF_8);
