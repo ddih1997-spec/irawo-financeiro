@@ -149,7 +149,9 @@ const b64d = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 const blobB64 = blob => new Promise((res, rej) => { const f = new FileReader(); f.onload = () => res(String(f.result).split(',')[1]); f.onerror = rej; f.readAsDataURL(blob); });
 
 /* ============ estado e acesso aos dados ============ */
-let cfg = ls.get('irawo_cfg', null);           // {url, token}
+let cfg = ls.get('irawo_cfg', null) || ls.get('irawo_cfg_real', null);   // {url, token}
+let temConfigCasa = false, modoLocal = false;
+function gravaCfg(c) { cfg = c; ls.set('irawo_cfg', c); if (c && c.url !== 'demo') ls.set('irawo_cfg_real', c); }
 let rows = ls.get('irawo_cache', []);
 let catalogo = ls.get('irawo_cat', []);   // receitas padrão [{nome, valor, categoria}]
 let ctxBaixa = null;
@@ -400,7 +402,7 @@ function chipsRapidos(t) {
   if (!lista.length) return '';
   return `<h2>${t === 'receita' ? 'Receita' : 'Despesa'} rápida</h2><div class="tabs">${lista.map(({ c, i }) => `<div class="tab" data-quick="${i}">${esc(c.nome)}${c.valor > 0 ? ' · ' + brl(c.valor) : ''}</div>`).join('')}</div><div class="hint">${t === 'receita' ? 'Toque no produto, digite o nome da pessoa e salve.' : 'Toque, preencha o valor se quiser e salve.'}</div>`;
 }
-const falta = (it, campo) => campo === 'pessoa' ? (it.tipo !== 'despesa' && !String(it.pessoa || '').trim()) : campo === 'valor_total' ? !(num(it.valor_total) > 0) : false;
+const falta = (it, campo) => campo === 'valor_total' ? !(num(it.valor_total) > 0) : (campo === 'pessoa' || campo === 'descricao') ? !String(it[campo] || '').trim() : false;
 function itemRevisaoHtml(it, i) {
   const ex = L.expandir({ ...it, grupo_id: 'x' });
   const multi = ex.length > 1;
@@ -412,7 +414,7 @@ function itemRevisaoHtml(it, i) {
     <div class="row"><b class="${it.tipo === 'despesa' ? 'neg' : 'pos'}">${it.tipo === 'despesa' ? 'Gasto' : 'Receita'}</b><span class="sp"></span><button class="btn danger sm" data-rdel="${i}">Remover</button></div>
     <div class="tabs" style="margin-top:8px"><div class="tab ${it.tipo !== 'despesa' ? 'on' : ''}" data-rset="${i}:tipo:receita">Receita</div><div class="tab ${it.tipo === 'despesa' ? 'on' : ''}" data-rset="${i}:tipo:despesa">Gasto</div></div>
     ${(() => { const op = catalogo.map((c, k) => ({ c, k })).filter(x => (x.c.tipo === 'despesa') === (it.tipo === 'despesa')); return op.length ? `<label>${it.tipo === 'despesa' ? 'Despesa' : 'Receita'} padrão</label><select data-rprod="${i}"><option value="">Escolher…</option>${op.map(({ c, k }) => `<option value="${k}" ${c.nome === it.produto ? 'selected' : ''}>${esc(c.nome)}${c.valor > 0 ? ' · ' + brl(c.valor) : ''}</option>`).join('')}</select>` : ''; })()}
-    <label>Descrição</label><input data-rf="${i}:descricao" value="${esc(it.descricao)}">
+    <label>Descrição</label><input data-rf="${i}:descricao" class="${falta(it, 'descricao') ? 'need' : ''}" value="${esc(it.descricao)}">
     <label>${it.tipo === 'despesa' ? 'Fornecedor' : 'Nome da pessoa'}</label><input data-rf="${i}:pessoa" class="${falta(it, 'pessoa') ? 'need' : ''}" value="${esc(it.pessoa)}">
     <label>Categoria</label><select data-rf="${i}:categoria">${catsOk.map(c => `<option ${c === it.categoria ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select>
     <div class="field2"><div><label>Valor total (R$)</label><input data-rf="${i}:valor_total" class="${falta(it, 'valor_total') ? 'need' : ''}" inputmode="decimal" value="${it.valor_total ?? ''}"></div>
@@ -451,12 +453,22 @@ async function interpretar(midias, texto) {
     const out = L.extrairJSON(j.texto);
     if (out.intent === 'baixa' && out.baixa) {
       const b = out.baixa;
-      sugestaoBaixa = { mensagem: out.mensagem, busca: b, candidatos: L.buscarBaixa(rows, b), dataPag: b.data_pagamento, valor: b.valor };
+      sugestaoBaixa = { mensagem: (out.transcricao ? `Ouvi: “${out.transcricao}”. ` : '') + (out.mensagem || ''), busca: b, candidatos: L.buscarBaixa(rows, b), dataPag: b.data_pagamento, valor: b.valor };
     } else {
-      revisao = { mensagem: out.mensagem || '', itens: (out.itens || []).map(normalizaItem) };
+      revisao = { mensagem: (out.transcricao ? `Ouvi: “${out.transcricao}”. ` : '') + (out.mensagem || ''), itens: (out.itens || []).map(normalizaComPadrao) };
     }
   } catch (e) { toast(e.message, true); }
   render();
+}
+function aplicaPadrao(it) {
+  const alvo = L.norm(it.descricao);
+  if (!alvo) return false;
+  const c = catalogo.find(x => (x.tipo === 'despesa') === (it.tipo === 'despesa') && (L.norm(x.nome) === alvo || new RegExp('(^|\\s)' + L.norm(x.nome).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(\\s|$)').test(alvo)));
+  if (!c) return false;
+  it.produto = c.nome; it.descricao = c.nome;
+  if (!(num(it.valor_total) > 0) && c.valor > 0) it.valor_total = c.valor;
+  if (c.categoria) it.categoria = c.categoria;
+  return true;
 }
 function normalizaItem(i) {
   const tipo = i.tipo === 'despesa' ? 'despesa' : 'receita';
@@ -465,6 +477,7 @@ function normalizaItem(i) {
     valor_total: i.valor_total ?? '', parcelas: Math.max(1, parseInt(i.parcelas, 10) || 1), primeiro_vencimento: i.primeiro_vencimento || '',
     entrada: i.entrada || '', pago: !!i.pago, data: i.data || L.hojeDe(), forma: i.forma || '' };
 }
+function normalizaComPadrao(i) { const it = normalizaItem(i); aplicaPadrao(it); return it; }
 // gravação de áudio
 let gravador = null;
 function abrirGravacao() {
@@ -533,7 +546,8 @@ function vAjustes() {
       <label>Endereço do script (URL)</label><input id="cfgUrl" value="${esc(cfg && cfg.url !== 'demo' ? cfg.url : '')}" placeholder="https://script.google.com/macros/s/…/exec">
       <label>Código de acesso (token)</label><input id="cfgTok" type="password" value="${esc(cfg && cfg.url !== 'demo' ? cfg.token : '')}">
       <div class="row" style="margin-top:12px"><button class="btn sp" id="salvaCfg">Salvar e testar</button></div></details>
-    <div class="row wrap" style="margin-top:10px"><button class="btn sec sm" id="btnDemo">Usar modo demonstração</button>${cfg ? '<button class="btn danger sm" id="btnSair">Desconectar</button>' : ''}</div>
+    <div class="row wrap" style="margin-top:10px"><button class="btn sec sm" id="btnDemo">Usar modo demonstração</button>${cfg && cfg.url === 'demo' && ls.get('irawo_cfg_real', null) ? '<button class="btn sm" id="btnReal">Voltar para a planilha</button>' : ''}${cfg ? '<button class="btn danger sm" id="btnSair">Desconectar</button>' : ''}</div>
+    ${!cfg || cfg.url === 'demo' ? '<div class="hint" style="margin-top:12px">Já tem a senha da casa? Digite abaixo para conectar à planilha.</div><div class="row" style="margin-top:8px"><input id="senhaCasa" type="password" placeholder="senha da casa" autocomplete="off"><button class="btn sm" id="btnCasa">Conectar</button></div>' : ''}
   </div>
   <h2>Categorias</h2>
   <div class="card"><div class="hint">Toque numa categoria para renomear ou excluir. Use "+ Nova" para criar.</div>
@@ -547,7 +561,18 @@ function vAjustes() {
     ${aut ? '<button class="btn sec sm" id="bloqueia">Bloquear agora</button>' : ''}</div>
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
-  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 f</p>`;
+  <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 14/10/2026 g</p>`;
+}
+async function decifraConfig(pw) {
+  const r = await fetch('config.enc.json', { cache: 'no-store' }); if (!r.ok) throw new Error('sem config');
+  const c = await r.json();
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64d(c.salt), iterations: c.iter, hash: 'SHA-256' }, k, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64d(c.iv) }, key, b64d(c.ct));
+  return JSON.parse(new TextDecoder().decode(pt));
+}
+async function conectaComSenha(pw) {
+  try { const o = await decifraConfig(pw); if (!o.u || !o.t) return false; gravaCfg({ url: o.u, token: o.t }); rows = []; ls.del('irawo_cache'); return true; } catch { return false; }
 }
 async function hashSenha(pw, saltB64) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -585,6 +610,10 @@ function telaBloqueio() {
       <input id="lkPw" type="password" autocomplete="current-password" placeholder="senha"><div id="lkErr" class="neg" style="min-height:20px"></div>
       <button class="btn" id="lkOk" style="min-width:200px">Entrar</button>
       ${temBio ? '<button class="btn sec" id="lkBio" style="min-width:200px">Digital / rosto</button>' : ''}</div>`
+    : (temConfigCasa && !modoLocal) ? `<div class="lock"><div class="mark">IRAWÒ</div><h2 style="margin:0">Bem-vindo</h2><div class="mut" style="max-width:320px">Digite a senha da casa. Ela conecta este aparelho à planilha e também protege o app aqui.</div>
+      <input id="lkPw" type="password" autocomplete="current-password" placeholder="senha da casa"><div id="lkErr" class="neg" style="min-height:20px"></div>
+      <button class="btn" id="lkCasa" style="min-width:200px">Entrar</button>
+      <a href="#" id="lkOutra" class="hint">Usar sem planilha (senha só neste aparelho)</a></div>`
     : `<div class="lock"><div class="mark">IRAWÒ</div><h2 style="margin:0">Bem-vindo</h2><div class="mut" style="max-width:320px">Crie uma senha para proteger o app neste aparelho.</div>
       <input id="lkPw" type="password" autocomplete="new-password" placeholder="nova senha (mín. 4 caracteres)">
       <input id="lkPw2" type="password" autocomplete="new-password" placeholder="repita a senha"><div id="lkErr" class="neg" style="min-height:20px"></div>
@@ -687,7 +716,7 @@ const num = s => { const v = parseFloat(String(s).replace(/\./g, m => (String(s)
 
 /* ============ eventos (delegação) ============ */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
+  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-nav],[data-quick],[data-catg],[data-catgnew],[data-catgsave],[data-catgdel],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnReal,#btnCasa,#lkCasa,#lkOutra,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); if (d.go !== 'lancar') { revisao = null; sugestaoBaixa = null; } return ir(d.go); }
@@ -790,11 +819,23 @@ document.addEventListener('click', async e => {
     const url = $('#cfgUrl').value.trim(), token = $('#cfgTok').value.trim();
     if (!/^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(url) || !token) return toast('Informe o endereço do script (terminado em /exec) e o código de acesso.', true);
     const antes = cfg; cfg = { url, token };
-    try { await api('status'); ls.set('irawo_cfg', cfg); toast('Conectado!'); await carregar(); } catch (er) { cfg = antes; toast(er.message, true); }
+    try { await api('status'); gravaCfg(cfg); toast('Conectado!'); await carregar(); } catch (er) { cfg = antes; toast(er.message, true); }
     return render();
   }
+  if (t.id === 'btnReal') { gravaCfg(ls.get('irawo_cfg_real', null)); view = 'inicio'; return carregar(); }
+  if (t.id === 'btnCasa') { const pw = $('#senhaCasa').value; if (!pw) return; t.disabled = true; if (await conectaComSenha(pw)) { toast('Conectado à planilha'); view = 'inicio'; return carregar(); } t.disabled = false; return toast('Senha incorreta.', true); }
+  if (t.id === 'lkOutra') { e.preventDefault(); modoLocal = true; return telaBloqueio(); }
+  if (t.id === 'lkCasa') {
+    const pw = $('#lkPw').value; if (!pw) return; $('#lkErr').textContent = 'Conectando…';
+    if (await conectaComSenha(pw)) {
+      await definirSenha(pw);
+      if (window.PublicKeyCredential && confirm('Quer entrar também com digital / rosto?')) { try { await registrarBiometria(); } catch {} }
+      return desbloquear();
+    }
+    $('#lkErr').textContent = 'Senha incorreta.'; $('#lkPw').value = ''; return;
+  }
   if (t.id === 'btnDemo') { cfg = { url: 'demo', token: '' }; ls.set('irawo_cfg', cfg); if (!ls.get('irawo_demo', []).length) semearDemo(); rows = ls.get('irawo_demo', []); view = 'inicio'; return carregar(); }
-  if (t.id === 'btnSair') { if (confirm('Desconectar deste aparelho? (os dados continuam na planilha)')) { cfg = null; rows = []; ls.del('irawo_cfg'); ls.del('irawo_cache'); render(); } return; }
+  if (t.id === 'btnSair') { if (confirm('Desconectar deste aparelho? (os dados continuam na planilha)')) { cfg = null; rows = []; ls.del('irawo_cfg'); ls.del('irawo_cfg_real'); ls.del('irawo_cache'); render(); } return; }
   if (t.id === 'trocaSenha') {
     modal(`<h2 style="margin-top:0">${ls.get('irawo_auth') ? 'Trocar senha' : 'Criar senha'}</h2><input id="nPw" type="password" placeholder="nova senha (mín. 4)"><div class="row" style="margin-top:12px"><button class="btn sec sp" data-close>Cancelar</button><button class="btn sp" id="okNPw">Salvar</button></div>`);
     $('#okNPw').onclick = async () => { const v = $('#nPw').value; if (v.length < 4) return toast('Mínimo 4 caracteres.', true); await definirSenha(v); fecharModal(); toast('Senha atualizada'); render(); };
@@ -817,22 +858,22 @@ document.addEventListener('click', async e => {
   }
   if (t.id === 'lkOk') {
     const a = ls.get('irawo_auth');
-    if (await hashSenha($('#lkPw').value, a.salt) === a.hash) return desbloquear();
+    if (await hashSenha($('#lkPw').value, a.salt) === a.hash) { if (!cfg || cfg.url === 'demo') { if (await conectaComSenha($('#lkPw').value)) toast('Conectado à planilha'); } return desbloquear(); }
     $('#lkErr').textContent = 'Senha incorreta.'; $('#lkPw').value = ''; return;
   }
   if (t.id === 'lkBio') { if (await entrarComBiometria()) return desbloquear(); $('#lkErr').textContent = 'Não reconhecido. Use a senha.'; return; }
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && $('#lkOk') && e.target.id === 'lkPw') $('#lkOk').click();
+  if (e.key === 'Enter' && e.target.id === 'lkPw') { const b = $('#lkOk') || $('#lkCasa') || $('#lkNovo'); if (b) b.click(); }
 });
 document.addEventListener('input', e => {
   if (e.target.id === 'bVal') atualizaModoBaixa();
   const f = e.target.dataset && e.target.dataset.rf;
-  if (f && revisao) { const [i, ...k] = f.split(':'); const campo = k.join(':'); revisao.itens[+i][campo] = e.target.value; if (campo === 'pessoa' || campo === 'valor_total') e.target.classList.toggle('need', falta(revisao.itens[+i], campo)); }
+  if (f && revisao) { const [i, ...k] = f.split(':'); const campo = k.join(':'); revisao.itens[+i][campo] = e.target.value; if (campo === 'pessoa' || campo === 'valor_total' || campo === 'descricao') e.target.classList.toggle('need', falta(revisao.itens[+i], campo)); }
 });
 document.addEventListener('change', async e => {
   const el = e.target;
-  if (el.dataset.rf && revisao) { const [i, k] = el.dataset.rf.split(':'); revisao.itens[+i][k] = el.value; if (['parcelas', 'entrada', 'valor_total', 'primeiro_vencimento', 'data'].includes(k)) { const sx = scrollY; render(); scrollTo(0, sx); } return; }
+  if (el.dataset.rf && revisao) { const [i, k] = el.dataset.rf.split(':'); revisao.itens[+i][k] = el.value; if (k === 'descricao' && aplicaPadrao(revisao.itens[+i])) { const sx = scrollY; render(); scrollTo(0, sx); return; } if (['parcelas', 'entrada', 'valor_total', 'primeiro_vencimento', 'data'].includes(k)) { const sx = scrollY; render(); scrollTo(0, sx); } return; }
   if (el.dataset.rprod !== undefined && revisao) {
     const c = catalogo[+el.value], it = revisao.itens[+el.dataset.rprod];
     if (c) { it.descricao = c.nome; if (c.valor > 0) it.valor_total = c.valor; it.produto = c.nome; if (c.categoria) it.categoria = c.categoria; }
@@ -858,7 +899,7 @@ document.addEventListener('change', async e => {
   // link de configuração: #cfg=base64({u,t}) — vale uma vez e some da barra de endereço
   try {
     const m = location.hash.match(/cfg=([^&]+)/);
-    if (m) { const o = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))); if (o.u && o.t && /\/dev$/.test(o.u)) window.__cfgErro = 'Link com endereço de teste. Gere o link de novo na planilha.'; else if (o.u && o.t) { cfg = { url: o.u, token: o.t }; ls.set('irawo_cfg', cfg); rows = []; ls.del('irawo_cache'); }
+    if (m) { const o = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]))))); if (o.u && o.t && /\/dev$/.test(o.u)) window.__cfgErro = 'Link com endereço de teste. Gere o link de novo na planilha.'; else if (o.u && o.t) { gravaCfg({ url: o.u, token: o.t }); rows = []; ls.del('irawo_cache'); }
       history.replaceState(null, '', location.pathname + location.search); }
   } catch {}
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
@@ -867,6 +908,8 @@ document.addEventListener('change', async e => {
     // quando uma versão nova assume o controle, recarrega uma vez para mostrar o app atualizado
     navigator.serviceWorker.addEventListener('controllerchange', () => { if (tinha && !window.__recarregou) { window.__recarregou = true; location.reload(); } });
   }
+  if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
+  fetch('config.enc.json', { cache: 'no-store' }).then(r => { temConfigCasa = r.ok; telaBloqueio(); }).catch(() => {});
   bloqueado = !!ls.get('irawo_auth') || true;
   telaBloqueio();
   render();

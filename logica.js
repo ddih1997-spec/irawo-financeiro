@@ -246,7 +246,7 @@
     const dia = DIAS[new Date(y, m - 1, d).getDay()];
     return `Você é o assistente financeiro da casa de axé IRAWÒ. Hoje é ${dia}, ${hoje}.
 Interprete o conteúdo enviado (áudio, imagem e/ou texto) e responda SOMENTE com um JSON, sem explicações:
-{"intent":"lancar"|"baixa"|"desconhecido","mensagem":"frase curta em português","itens":[...],"baixa":{...}}
+{"intent":"lancar"|"baixa"|"desconhecido","mensagem":"frase curta em português","transcricao":"texto exato do que foi dito no áudio, vazio se não houver áudio","itens":[...],"baixa":{...}}
 
 intent "lancar" -> "itens" é uma lista; cada item:
 {"tipo":"receita"|"despesa","descricao":"curta","pessoa":"cliente ou fornecedor, ou vazio","categoria":"UMA da lista","valor_total":número,"parcelas":inteiro>=1,"primeiro_vencimento":"AAAA-MM-DD","entrada":número ou null,"pago":true|false,"data":"AAAA-MM-DD","forma":"pix|dinheiro|cartão|transferência|boleto|"}

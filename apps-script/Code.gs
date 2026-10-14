@@ -96,7 +96,7 @@ function doPost(e) {
     lock.waitLock(25000);
     try {
       switch (req.acao) {
-        case 'status': return saida_({ ok: true, temChave: !!chaveIA_(props), modelo: props.getProperty('MODELO') || MODELO_PADRAO });
+        case 'status': return saida_({ ok: true, temChave: !!chaveIA_(props), modelo: modelos_(props)[0] });
         case 'listar': return saida_({ ok: true, dados: lerTudo_() });
         case 'adicionar': adicionar_(req.itens || []); return saida_({ ok: true, dados: lerTudo_() });
         case 'atualizar': atualizar_(req.itens || []); return saida_({ ok: true, dados: lerTudo_() });
@@ -312,36 +312,47 @@ function salvarCategorias_(obj) {
   escreverCategorias_(abaCategorias_(), { receita: obj.receita || [], despesa: obj.despesa || [] });
 }
 
-/** Proxy para o OpenRouter: a chave nunca sai do servidor. */
+const MODELOS_PADRAO = ['google/gemini-3.1-pro-preview', 'google/gemini-2.5-flash'];
+function modelos_(props) {
+  const m = props.getProperty('MODELO');
+  return m ? [m].concat(MODELOS_PADRAO.filter(x => x !== m)) : MODELOS_PADRAO;
+}
+
+/** Proxy para o OpenRouter: a chave nunca sai do servidor. Tenta o modelo principal e cai no reserva. */
 function ia_(req) {
   const props = PropertiesService.getScriptProperties();
   const chave = chaveIA_(props);
-  if (!chave) return { ok: false, erro: 'Chave do OpenRouter ainda não configurada (Ajustes).' };
+  if (!chave) return { ok: false, erro: 'Chave do OpenRouter ainda não configurada.' };
   const content = [{ type: 'text', text: String(req.prompt || '') }];
   (req.midias || []).forEach(m => {
     if (m.tipo === 'audio') content.push({ type: 'input_audio', input_audio: { data: m.base64, format: m.formato || 'wav' } });
     else if (m.tipo === 'imagem') content.push({ type: 'image_url', image_url: { url: 'data:' + (m.mime || 'image/jpeg') + ';base64,' + m.base64 } });
     else if (m.tipo === 'video') content.push({ type: 'video_url', video_url: { url: 'data:' + (m.mime || 'video/mp4') + ';base64,' + m.base64 } });
   });
-  const resp = UrlFetchApp.fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'post',
-    contentType: 'application/json',
-    headers: { Authorization: 'Bearer ' + chave, 'X-Title': 'IRAWO Financeiro' },
-    payload: JSON.stringify({
-      model: props.getProperty('MODELO') || MODELO_PADRAO,
-      messages: [{ role: 'user', content: content }],
-      response_format: { type: 'json_object' },
-      temperature: 0.1,
-    }),
-    muteHttpExceptions: true,
-  });
-  const code = resp.getResponseCode();
-  const corpo = resp.getContentText();
-  if (code >= 300) return { ok: false, erro: 'OpenRouter ' + code + ': ' + corpo.slice(0, 300) };
-  const j = JSON.parse(corpo);
-  const texto = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
-  if (!texto) return { ok: false, erro: 'A IA não devolveu resposta.' };
-  return { ok: true, texto: texto };
+  const lista = modelos_(props);
+  let ultimo = '';
+  for (let i = 0; i < lista.length; i++) {
+    const resp = UrlFetchApp.fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'post',
+      contentType: 'application/json',
+      headers: { Authorization: 'Bearer ' + chave, 'X-Title': 'IRAWO Financeiro' },
+      payload: JSON.stringify({
+        model: lista[i],
+        messages: [{ role: 'user', content: content }],
+        response_format: { type: 'json_object' },
+        temperature: 0.1,
+      }),
+      muteHttpExceptions: true,
+    });
+    const code = resp.getResponseCode();
+    const corpo = resp.getContentText();
+    if (code >= 300) { ultimo = 'OpenRouter ' + code + ' (' + lista[i] + '): ' + corpo.slice(0, 200); continue; }
+    let texto = '';
+    try { const j = JSON.parse(corpo); texto = j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content; } catch (e) { texto = ''; }
+    if (!texto) { ultimo = 'A IA (' + lista[i] + ') não devolveu resposta.'; continue; }
+    return { ok: true, texto: texto, modelo: lista[i] };
+  }
+  return { ok: false, erro: ultimo };
 }
 
 /**
