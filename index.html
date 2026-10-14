@@ -508,11 +508,6 @@ function vAjustes() {
       <div class="row" style="margin-top:12px"><button class="btn sp" id="salvaCfg">Salvar e testar</button></div></details>
     <div class="row wrap" style="margin-top:10px"><button class="btn sec sm" id="btnDemo">Usar modo demonstração</button>${cfg ? '<button class="btn danger sm" id="btnSair">Desconectar</button>' : ''}</div>
   </div>
-  <h2>Inteligência artificial</h2>
-  <div class="card"><div class="hint">A chave do OpenRouter é guardada <b>na sua planilha</b> (nunca no GitHub nem no celular). Cole uma vez.</div>
-    <div id="statusIA" class="hint" style="margin:8px 0"></div>
-    <label>Chave do OpenRouter</label><input id="chaveIA" type="password" placeholder="sk-or-v1-…" autocomplete="off">
-    <div class="row" style="margin-top:12px"><button class="btn sp" id="salvaChave">Salvar chave</button></div></div>
   <h2>Receitas padrão</h2>
   <div class="card"><div class="hint">Serviços e produtos com valor fixo. Ao lançar uma receita, é só escolher o produto e digitar o nome da pessoa.</div>
     ${catalogo.length ? catalogo.map((c, i) => `<div class="item" data-cat="${i}"><div class="sp"><div class="t">${esc(c.nome)}</div><div class="d">${esc(c.categoria)}</div></div><div class="val">${brl(c.valor)}</div></div>`).join('') : '<div class="empty">Nenhum produto cadastrado.</div>'}
@@ -525,11 +520,6 @@ function vAjustes() {
     <p class="hint">A tela de senha protege o app neste aparelho. Ele bloqueia sozinho depois de alguns minutos fora.</p>
   </div>
   <p class="hint" style="text-align:center;margin-top:20px">IRAWÒ · versão 1.0</p>`;
-}
-async function atualizaStatusIA() {
-  const el = $('#statusIA'); if (!el || !cfg) return;
-  try { const j = await api('status'); el.innerHTML = j.temChave ? 'Chave configurada (' + esc(j.modelo) + ')' : 'Chave ainda não configurada.'; }
-  catch (e) { el.textContent = e.message; }
 }
 async function hashSenha(pw, saltB64) {
   const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveBits']);
@@ -643,7 +633,7 @@ const num = s => { const v = parseFloat(String(s).replace(/\./g, m => (String(s)
 
 /* ============ eventos (delegação) ============ */
 document.addEventListener('click', async e => {
-  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-quick],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnSair,#salvaChave,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
+  const t = e.target.closest('[data-go],[data-mes],[data-aba],[data-tog],[data-baixa],[data-desfaz],[data-edit],[data-f],[data-lanc],[data-quick],[data-cat],[data-catnew],[data-catsave],[data-catdel],[data-rdel],[data-rset],[data-radd],[data-rcancel],[data-rsave],[data-close],[data-del],[data-delg],[data-esave],[data-bsave],#salvaCfg,#btnDemo,#btnSair,#trocaSenha,#toggleBio,#bloqueia,#lkOk,#lkBio,#lkNovo,#okRec,#cancelRec,#anexarAudio,#okTxt,#chkQ');
   if (!t) return;
   const d = t.dataset;
   if (d.go) { e.preventDefault(); if (d.go !== 'lancar') { revisao = null; sugestaoBaixa = null; } return ir(d.go); }
@@ -726,11 +716,6 @@ document.addEventListener('click', async e => {
   }
   if (t.id === 'btnDemo') { cfg = { url: 'demo', token: '' }; ls.set('irawo_cfg', cfg); if (!ls.get('irawo_demo', []).length) semearDemo(); rows = ls.get('irawo_demo', []); view = 'inicio'; return carregar(); }
   if (t.id === 'btnSair') { if (confirm('Desconectar deste aparelho? (os dados continuam na planilha)')) { cfg = null; rows = []; ls.del('irawo_cfg'); ls.del('irawo_cache'); render(); } return; }
-  if (t.id === 'salvaChave') {
-    const c = $('#chaveIA').value.trim(); if (!c) return;
-    try { await api('salvarChave', { chave: c }); $('#chaveIA').value = ''; toast('Chave salva na planilha ✓'); atualizaStatusIA(); } catch (er) { toast(er.message, true); }
-    return;
-  }
   if (t.id === 'trocaSenha') {
     modal(`<h2 style="margin-top:0">${ls.get('irawo_auth') ? 'Trocar senha' : 'Criar senha'}</h2><input id="nPw" type="password" placeholder="nova senha (mín. 4)"><div class="row" style="margin-top:12px"><button class="btn sec sp" data-close>Cancelar</button><button class="btn sp" id="okNPw">Salvar</button></div>`);
     $('#okNPw').onclick = async () => { const v = $('#nPw').value; if (v.length < 4) return toast('Mínimo 4 caracteres.', true); await definirSenha(v); fecharModal(); toast('Senha atualizada'); render(); };
@@ -793,8 +778,6 @@ document.addEventListener('change', async e => {
     catch { toast('Não consegui ler esse áudio. Grave pelo botão do app.', true); render(); }
   }
 });
-const _render = render;
-render = function () { _render(); if (view === 'ajustes') atualizaStatusIA(); };
 
 /* ============ início ============ */
 (function iniciar() {
